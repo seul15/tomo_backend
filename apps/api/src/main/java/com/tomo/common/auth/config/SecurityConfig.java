@@ -1,21 +1,27 @@
 package com.tomo.common.auth.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tomo.common.auth.filter.JwtAuthenticationFilter;
+import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.ErrorCode;
 import com.tomo.common.response.ErrorResponse;
+import com.tomo.user.service.LoginSessionService;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/** API 문서 공개 경로와 기본 인증 정책을 설정한다. */
+/** API 문서 공개 경로와 Access Token 인증 정책을 설정한다. */
 @Configuration
 public class SecurityConfig {
   /**
@@ -38,18 +44,36 @@ public class SecurityConfig {
   }
 
   /**
-   * API 문서 조회를 허용하고 그 외 요청에는 인증을 요구한다.
+   * API 문서 공개 경로와 JWT 인증 필터를 구성한다.
    *
    * @param http HTTP 보안 설정
    * @param authenticationEntryPoint 인증 실패 처리기
-   * @return 애플리케이션 보안 필터 체인
-   * @throws Exception 필터 체인 구성에 실패한 경우
+   * @param accessTokenProvider Access Token 검증기 조회
+   * @param loginSessionService 로그인 세션 조회
+   * @param objectMapper JSON 직렬화 객체
+   * @return 보안 필터 체인
+   * @throws Exception 필터 체인 구성 실패 시
    */
   @Bean
   public SecurityFilterChain securityFilterChain(
-      HttpSecurity http, AuthenticationEntryPoint authenticationEntryPoint) throws Exception {
+      HttpSecurity http,
+      AuthenticationEntryPoint authenticationEntryPoint,
+      ObjectProvider<AccessTokenProvider> accessTokenProvider,
+      ObjectProvider<LoginSessionService> loginSessionService,
+      ObjectMapper objectMapper)
+      throws Exception {
+    AccessTokenProvider provider = accessTokenProvider.getIfAvailable();
+
+    if (provider != null) {
+      http.addFilterBefore(
+          new JwtAuthenticationFilter(provider, loginSessionService.getObject(), objectMapper),
+          UsernamePasswordAuthenticationFilter.class);
+    }
+
     return http.formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
+        .sessionManagement(
+            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             authorize ->
                 authorize

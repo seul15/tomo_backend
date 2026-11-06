@@ -13,16 +13,27 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 public class JwtConfig {
   /**
-   * Base64 인코딩된 256비트 이상의 서명 키를 이용해 코덱을 생성한다.
+   * 인증에 사용할 UTC 기준 시계를 생성한다.
    *
-   * @param base64Key 외부에서 주입한 Base64 JWT 서명 키
+   * @return UTC 기준 시계
+   */
+  @Bean
+  public Clock clock() {
+    return Clock.systemUTC();
+  }
+
+  /**
+   * Base64 인코딩된 서명 키를 이용해 Access Token 검증기를 생성한다.
+   *
+   * @param base64Key 외부에서 주입한 JWT 서명 키
+   * @param clock 공통 시계
    * @return 서명·검증을 담당하는 코덱
    */
   @Bean
   @ConditionalOnProperty(name = "tomo.auth.jwt-secret-base64")
   public AccessTokenProvider jwtAccessTokenCodec(
-      @Value("${tomo.auth.jwt-secret-base64}") String base64Key) {
+      @Value("${tomo.auth.jwt-secret-base64}") String base64Key, Clock clock) {
     byte[] secret = Base64.getDecoder().decode(base64Key);
-    return new AccessTokenProvider(Keys.hmacShaKeyFor(secret), Clock.systemUTC());
+    return new AccessTokenProvider(Keys.hmacShaKeyFor(secret), clock);
   }
 }
