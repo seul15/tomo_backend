@@ -10,4 +10,6 @@ dependencies {
     api 'org.apache.commons:commons-pool2'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    compileOnly 'com.github.spotbugs:spotbugs-annotations:4.10.5'
 }
