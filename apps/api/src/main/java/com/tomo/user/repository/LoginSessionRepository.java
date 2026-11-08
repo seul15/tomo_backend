@@ -13,4 +13,13 @@ public interface LoginSessionRepository extends JpaRepository<LoginSession, Long
    * @return 로그인 세션 목록
    */
   List<LoginSession> findByUserId(String userId);
+
+  /**
+   * 로그인 세션 ID와 소유자 ID가 모두 일치하는 세션을 삭제한다.
+   *
+   * @param id 로그인 세션 ID
+   * @param userId 세션 소유자 ID
+   * @return 삭제한 세션 수
+   */
+  long deleteByIdAndUserId(Long id, String userId);
 }
