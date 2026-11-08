@@ -8,12 +8,17 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
 /** user_agreement 테이블에 대응하는 회원 가입 동의 이력. */
 @Entity
-@Table(name = "user_agreement")
+@Table(
+    name = "user_agreement",
+    uniqueConstraints = {
+      @UniqueConstraint(columnNames = {"users_id", "agreement_type", "document_versions_id"})
+    })
 public class UserAgreement {
   private static final String AGREED = "1";
   private static final String NOT_AGREED = "0";

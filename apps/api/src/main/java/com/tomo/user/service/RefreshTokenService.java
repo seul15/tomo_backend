@@ -14,6 +14,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class RefreshTokenService {
   private static final String KEY_PREFIX = "auth:refresh:session:";
+  private static final String REVOKED_VALUE = "__REVOKED__";
   private static final int RANDOM_BYTES = 32;
   private static final int MAX_TOKEN_LENGTH = 64;
 
@@ -161,6 +163,49 @@ public class RefreshTokenService {
   }
 
   /**
+   * 검증된 사용자 세션에 Refresh Token을 재발급한다.
+   *
+   * <p>기존 토큰은 교체되어 더 이상 사용할 수 없다.
+   *
+   * @param userId 검증된 사용자 ID
+   * @param sessionId 로그인 세션 ID
+   * @return 재발급된 Refresh Token
+   * @throws BusinessException 사용자나 세션이 유효하지 않은 경우
+   */
+  public String reissue(String userId, long sessionId) {
+    if (userId == null || userId.isBlank() || sessionId <= 0) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+    }
+
+    LoginSession session =
+        loginSessionRepository
+            .findById(sessionId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+
+    if (!userId.equals(session.getUserId())) {
+      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
+
+    Duration ttl =
+        Duration.between(clock.instant(), session.getExpiresAt().toInstant(ZoneOffset.UTC));
+
+    if (ttl.toMillis() <= 0 || !loginSessionService.isValidAccessSession(userId, sessionId)) {
+      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
+
+    String token = newToken(sessionId);
+
+    boolean replaced =
+        redisStringClient.replaceUnlessRevoked(key(sessionId), REVOKED_VALUE, hash(token), ttl);
+
+    if (!replaced) {
+      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
+
+    return token;
+  }
+
+  /**
    * Refresh Token 및 연결된 로그인 세션의 유효성을 확인한다.
    *
    * <p>검증 과정에서 토큰을 변경하거나 Redis TTL을 연장하지 않는다.
@@ -196,19 +241,26 @@ public class RefreshTokenService {
   }
 
   /**
-   * DB 로그인 세션 삭제 이후 연결된 Refresh Token을 폐기한다.
+   * 로그인 세션 삭제 전에 Refresh Token을 폐기한다.
    *
-   * <p>호출 측에서 세션 소유자 검증과 DB 삭제를 완료해야 한다.
+   * <p>폐기 표시는 세션 만료까지 유지하여 뒤늦은 토큰 발급을 차단한다.
    *
-   * @param sessionId 삭제 완료한 로그인 세션 ID
-   * @throws BusinessException 세션 ID가 올바르지 않은 경우
+   * @param sessionId 로그인 세션 ID
+   * @param expiresAt 세션 만료 시각
+   * @throws BusinessException 세션 정보가 올바르지 않은 경우
    */
-  void revokeAfterSessionDeletion(long sessionId) {
-    if (sessionId <= 0) {
+  void revokeBeforeSessionDeletion(long sessionId, LocalDateTime expiresAt) {
+    if (sessionId <= 0 || expiresAt == null) {
       throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }
 
-    redisStringClient.delete(key(sessionId));
+    Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));
+
+    if (ttl.toMillis() <= 0) {
+      ttl = Duration.ofMillis(1);
+    }
+
+    redisStringClient.set(key(sessionId), REVOKED_VALUE, ttl);
   }
 
   private String newToken(long sessionId) {

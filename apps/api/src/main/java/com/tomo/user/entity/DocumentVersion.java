@@ -9,11 +9,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
 
 /** document_versions 테이블에 대응하는 약관 문서 버전. */
 @Entity
-@Table(name = "document_versions")
+@Table(
+    name = "document_versions",
+    uniqueConstraints = {@UniqueConstraint(columnNames = {"document_type", "version"})})
 public class DocumentVersion {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

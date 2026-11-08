@@ -1,7 +1,10 @@
 package com.tomo.user.service;
 
 import com.tomo.common.auth.session.AccessSessionValidator;
+import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.ErrorCode;
 import com.tomo.user.entity.AccountStatus;
+import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -66,6 +69,26 @@ public class LoginSessionService implements AccessSessionValidator {
         .filter(session -> userId.equals(session.getUserId()))
         .filter(session -> session.getExpiresAt().isAfter(now))
         .isPresent();
+  }
+
+  /**
+   * 사용자 소유권을 확인하고 로그인 세션을 조회한다.
+   *
+   * @param userId 사용자 ID
+   * @param sessionId 로그인 세션 ID
+   * @return 소유권이 확인된 로그인 세션
+   * @throws BusinessException 요청 또는 세션 소유권이 유효하지 않은 경우
+   */
+  @Transactional(readOnly = true)
+  public LoginSession requireOwnedSession(String userId, long sessionId) {
+    if (userId == null || userId.isBlank() || sessionId <= 0) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+    }
+
+    return loginSessionRepository
+        .findById(sessionId)
+        .filter(session -> userId.equals(session.getUserId()))
+        .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
   }
 
   /**

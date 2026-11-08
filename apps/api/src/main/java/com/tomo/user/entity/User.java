@@ -54,6 +54,32 @@ public class User {
     return new User(LocalDateTime.now(ZoneOffset.UTC));
   }
 
+  /**
+   * 가입 대기 사용자의 가입을 완료한다.
+   *
+   * @param nickname 가입 닉네임
+   * @throws IllegalArgumentException 닉네임이 올바르지 않은 경우
+   * @throws IllegalStateException 가입 대기 상태가 아닌 경우
+   */
+  public void completeRegistration(String nickname) {
+    if (accountStatus != AccountStatus.PENDING) {
+      throw new IllegalStateException("가입 대기 상태에서만 가입을 완료할 수 있습니다.");
+    }
+
+    if (nickname == null || nickname.isBlank()) {
+      throw new IllegalArgumentException("닉네임은 필수입니다.");
+    }
+
+    String normalizedNickname = nickname.trim();
+
+    if (normalizedNickname.length() > 50) {
+      throw new IllegalArgumentException("닉네임은 50자 이하여야 합니다.");
+    }
+
+    this.nickname = normalizedNickname;
+    this.accountStatus = AccountStatus.ACTIVE;
+  }
+
   @PreUpdate
   private void updateTimestamp() {
     updatedAt = LocalDateTime.now(ZoneOffset.UTC);

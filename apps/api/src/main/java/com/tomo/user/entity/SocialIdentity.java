@@ -8,12 +8,18 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 /** social_identities 테이블에 대응하는 소셜 인증 정보 엔티티. */
 @Entity
-@Table(name = "social_identities")
+@Table(
+    name = "social_identities",
+    uniqueConstraints = {
+      @UniqueConstraint(columnNames = {"provider", "provider_subject"}),
+      @UniqueConstraint(columnNames = "users_id")
+    })
 public class SocialIdentity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

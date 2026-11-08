@@ -23,6 +23,14 @@ public class RedisStringClient {
               + "return redis.call('DEL', KEYS[1]) else return 0 end",
           Long.class);
 
+  private static final DefaultRedisScript<Long> REISSUE_SCRIPT =
+      new DefaultRedisScript<>(
+          "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+              + "return 0 end "
+              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2]); "
+              + "return 1",
+          Long.class);
+
   private final StringRedisTemplate redisTemplate;
 
   /**
@@ -96,6 +104,41 @@ public class RedisStringClient {
    */
   public boolean deleteIfMatches(String key, String expectedValue) {
     Long result = redisTemplate.execute(DELETE_IF_MATCHES_SCRIPT, List.of(key), expectedValue);
+
+    return Long.valueOf(1L).equals(result);
+  }
+
+  /**
+   * Redis 키에 TTL과 함께 값을 저장한다.
+   *
+   * @param key Redis 키
+   * @param value 저장할 값
+   * @param ttl 유효 기간
+   */
+  public void set(String key, String value, Duration ttl) {
+    redisTemplate.opsForValue().set(key, value, ttl);
+  }
+
+  /**
+   * 세션 폐기 표시가 없을 때만 토큰 값을 교체한다.
+   *
+   * @param key Redis 키
+   * @param revokedValue 세션 폐기 표시
+   * @param newValue 새로운 값
+   * @param ttl 유효 기간
+   * @return 교체 성공 여부
+   * @throws IllegalArgumentException TTL이 1밀리초 미만인 경우
+   */
+  public boolean replaceUnlessRevoked(
+      String key, String revokedValue, String newValue, Duration ttl) {
+
+    if (ttl.toMillis() <= 0) {
+      throw new IllegalArgumentException("TTL은 1밀리초 이상이어야 합니다.");
+    }
+
+    Long result =
+        redisTemplate.execute(
+            REISSUE_SCRIPT, List.of(key), revokedValue, newValue, Long.toString(ttl.toMillis()));
 
     return Long.valueOf(1L).equals(result);
   }

@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.ErrorCode;
+import com.tomo.user.entity.LoginSession;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,7 +28,9 @@ class LoginSessionFacadeTest {
 
   @Mock private LoginSessionService loginSessionService;
   @Mock private RefreshTokenService refreshTokenService;
+  @Mock private LoginSession session;
 
+  private static final LocalDateTime EXPIRES_AT = LocalDateTime.of(2026, 11, 8, 19, 0);
   private LoginSessionFacade facade;
 
   @BeforeEach
@@ -33,46 +39,46 @@ class LoginSessionFacadeTest {
   }
 
   @Test
-  @DisplayName("로그아웃하면 DB 세션 삭제 후 Refresh Token을 폐기한다")
+  @DisplayName("Refresh Token 폐기 후 DB 세션을 삭제한다")
   void logsOutSession() {
     // given
-    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+    when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID)).thenReturn(session);
+    when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
 
     // when
     facade.logout(USER_ID, SESSION_ID);
 
     // then
     InOrder inOrder = inOrder(loginSessionService, refreshTokenService);
-
+    inOrder.verify(loginSessionService).requireOwnedSession(USER_ID, SESSION_ID);
+    inOrder.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
     inOrder.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
-
-    inOrder.verify(refreshTokenService).revokeAfterSessionDeletion(SESSION_ID);
   }
 
   @Test
-  @DisplayName("DB 세션 삭제 후 Redis 정리에 실패해도 로그아웃을 완료한다")
-  void completesLogoutWhenRedisCleanupFails() {
+  @DisplayName("Redis 폐기 실패 시 DB 세션은 삭제하지 않는다")
+  void rejectsLogoutWhenRedisFails() {
     // given
-    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+    when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID)).thenReturn(session);
+    when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
 
     doThrow(new IllegalStateException("Redis unavailable"))
         .when(refreshTokenService)
-        .revokeAfterSessionDeletion(SESSION_ID);
-
-    // when
-    facade.logout(USER_ID, SESSION_ID);
+        .revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
 
     // then
-    InOrder inOrder = inOrder(loginSessionService, refreshTokenService);
-    inOrder.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
-    inOrder.verify(refreshTokenService).revokeAfterSessionDeletion(SESSION_ID);
+    assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
+        .isInstanceOf(IllegalStateException.class);
+
+    verify(loginSessionService, never()).invalidateOwnedSession(USER_ID, SESSION_ID);
   }
 
   @Test
   @DisplayName("세션 삭제 권한이 없으면 Refresh Token을 폐기하지 않는다")
   void rejectsUnauthorizedLogout() {
     // given
-    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(false);
+    when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID))
+        .thenThrow(new BusinessException(ErrorCode.UNAUTHORIZED));
 
     // then
     assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))

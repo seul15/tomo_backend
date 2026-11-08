@@ -1,10 +1,13 @@
 package com.tomo.integration.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 @ExtendWith(MockitoExtension.class)
 class RedisStringClientTest {
@@ -64,5 +68,37 @@ class RedisStringClientTest {
 
     // then
     verify(redisTemplate).delete("key");
+  }
+
+  @Test
+  @DisplayName("세션 폐기 표시를 TTL과 함께 저장한다")
+  void storesRevocationMarker() {
+    // given
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    RedisStringClient client = new RedisStringClient(redisTemplate);
+
+    // when
+    client.set("key", "__REVOKED__", Duration.ofMinutes(30));
+
+    // then
+    verify(valueOperations).set("key", "__REVOKED__", Duration.ofMinutes(30));
+  }
+
+  @Test
+  @DisplayName("폐기된 세션의 재발급을 차단한다")
+  void rejectsReissueForRevokedSession() {
+    // given
+    RedisStringClient client = new RedisStringClient(redisTemplate);
+
+    when(redisTemplate.execute(
+            any(RedisScript.class), eq(List.of("key")), eq("__REVOKED__"), eq("new"), eq("60000")))
+        .thenReturn(0L);
+
+    // when
+    boolean replaced =
+        client.replaceUnlessRevoked("key", "__REVOKED__", "new", Duration.ofMinutes(1));
+
+    // then
+    assertThat(replaced).isFalse();
   }
 }
