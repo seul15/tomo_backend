@@ -162,10 +162,14 @@ class RefreshTokenServiceTest {
   }
 
   @Test
-  @DisplayName("Refresh Token 폐기 시 해당 세션의 Redis 키를 삭제한다")
+  @DisplayName("본인 로그인 세션의 Refresh Token을 폐기한다")
   void revokesToken() {
+    // given
+    when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getUserId()).thenReturn(USER_ID);
+
     // when
-    service.revoke(SESSION_ID);
+    service.revoke(USER_ID, SESSION_ID);
 
     // then
     verify(redisStringClient).delete(KEY);
@@ -191,6 +195,22 @@ class RefreshTokenServiceTest {
 
     // when & then
     assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
+
+    verifyNoInteractions(redisStringClient);
+  }
+
+  @Test
+  @DisplayName("다른 사용자 세션의 Refresh Token을 폐기할 수 없다")
+  void rejectsOtherUsersRevoke() {
+    // given
+    when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getUserId()).thenReturn("other-user");
+
+    // when & then
+    assertThatThrownBy(() -> service.revoke(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
