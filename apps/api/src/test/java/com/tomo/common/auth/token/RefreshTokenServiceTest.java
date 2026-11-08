@@ -63,7 +63,7 @@ class RefreshTokenServiceTest {
         .thenReturn(true);
 
     // when
-    String token = service.issue(SESSION_ID);
+    String token = service.issue(USER_ID, SESSION_ID);
 
     // then
     ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
@@ -84,7 +84,7 @@ class RefreshTokenServiceTest {
     when(redisStringClient.setIfAbsent(eq(KEY), anyString(), eq(Duration.ofMinutes(30))))
         .thenReturn(true);
 
-    String token = service.issue(SESSION_ID);
+    String token = service.issue(USER_ID, SESSION_ID);
 
     ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
 
@@ -131,12 +131,12 @@ class RefreshTokenServiceTest {
   void rejectsExpiredSession() {
     // given
     when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
-
+    when(session.getUserId()).thenReturn(USER_ID);
     when(session.getExpiresAt())
         .thenReturn(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
 
     // when & then
-    assertThatThrownBy(() -> service.issue(SESSION_ID))
+    assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
@@ -154,7 +154,7 @@ class RefreshTokenServiceTest {
         .thenReturn(false);
 
     // when & then
-    assertThatThrownBy(() -> service.issue(SESSION_ID))
+    assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
@@ -180,5 +180,21 @@ class RefreshTokenServiceTest {
     when(session.getUserId()).thenReturn(USER_ID);
 
     when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true);
+  }
+
+  @Test
+  @DisplayName("다른 사용자의 로그인 세션으로 Refresh Token을 발급할 수 없다")
+  void rejectsOtherUsersSession() {
+    // given
+    when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getUserId()).thenReturn("other-user");
+
+    // when & then
+    assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
+
+    verifyNoInteractions(redisStringClient);
   }
 }

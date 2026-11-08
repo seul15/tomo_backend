@@ -65,12 +65,13 @@ public class RefreshTokenService {
    *
    * <p>DB 로그인 세션의 남은 유효시간을 Redis TTL로 사용한다. 이미 발급한 세션의 토큰은 덮어쓰지 않는다.
    *
+   * @param userId 검증된 사용자 ID
    * @param sessionId 로그인 세션 ID
    * @return Refresh Token 원문
    * @throws BusinessException 세션이 유효하지 않거나 이미 토큰이 존재하는 경우
    */
-  public String issue(long sessionId) {
-    if (sessionId <= 0) {
+  public String issue(String userId, long sessionId) {
+    if (userId == null || userId.isBlank() || sessionId <= 0) {
       throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }
 
@@ -79,15 +80,18 @@ public class RefreshTokenService {
             .findById(sessionId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-    Instant expiresAt = session.getExpiresAt().toInstant(ZoneOffset.UTC);
+    if (!userId.equals(session.getUserId())) {
+      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
 
+    Instant expiresAt = session.getExpiresAt().toInstant(ZoneOffset.UTC);
     Duration ttl = Duration.between(clock.instant(), expiresAt);
 
     if (ttl.isZero() || ttl.isNegative()) {
       throw new BusinessException(ErrorCode.UNAUTHORIZED);
     }
 
-    if (!loginSessionService.isValidAccessSession(session.getUserId(), sessionId)) {
+    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
       throw new BusinessException(ErrorCode.UNAUTHORIZED);
     }
 
