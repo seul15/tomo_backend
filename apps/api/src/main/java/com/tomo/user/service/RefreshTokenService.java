@@ -179,7 +179,7 @@ public class RefreshTokenService {
    * @param sessionId 삭제 완료한 로그인 세션 ID
    * @throws BusinessException 세션 ID가 올바르지 않은 경우
    */
-  public void revokeAfterSessionDeletion(long sessionId) {
+  void revokeAfterSessionDeletion(long sessionId) {
     if (sessionId <= 0) {
       throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }

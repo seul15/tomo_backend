@@ -11,7 +11,7 @@ import java.time.ZoneOffset;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Access 인증에 사용되는 사용자와 로그인 세션의 유효성을 조회한다. */
+/** Access 인증을 위한 세션 유효성 조회와 로그인 세션 무효화를 담당한다. */
 @Service
 public class LoginSessionService implements AccessSessionValidator {
   private final UserRepository userRepository;

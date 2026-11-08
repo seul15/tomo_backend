@@ -1,6 +1,8 @@
 package com.tomo.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tomo.user.entity.AccountStatus;
@@ -104,5 +106,44 @@ class LoginSessionServiceTest {
 
     // then
     assertThat(valid).isFalse();
+  }
+
+  @Test
+  @DisplayName("본인 로그인 세션은 삭제할 수 있다")
+  void invalidatesOwnedSession() {
+    // given
+    when(loginSessionRepository.deleteByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(1L);
+
+    // when
+    boolean invalidated = service.invalidateOwnedSession(USER_ID, SESSION_ID);
+
+    // then
+    assertThat(invalidated).isTrue();
+    verify(loginSessionRepository).deleteByIdAndUserId(SESSION_ID, USER_ID);
+  }
+
+  @Test
+  @DisplayName("다른 사용자에게 속한 로그인 세션은 삭제할 수 없다")
+  void rejectsOtherUsersSessionDeletion() {
+    // given
+    when(loginSessionRepository.deleteByIdAndUserId(SESSION_ID, USER_ID)).thenReturn(0L);
+
+    // when
+    boolean invalidated = service.invalidateOwnedSession(USER_ID, SESSION_ID);
+
+    // then
+    assertThat(invalidated).isFalse();
+    verify(loginSessionRepository).deleteByIdAndUserId(SESSION_ID, USER_ID);
+  }
+
+  @Test
+  @DisplayName("잘못된 사용자 ID로는 로그인 세션 삭제를 시도하지 않는다")
+  void rejectsInvalidUserIdForDeletion() {
+    // when
+    boolean invalidated = service.invalidateOwnedSession("", SESSION_ID);
+
+    // then
+    assertThat(invalidated).isFalse();
+    verifyNoInteractions(loginSessionRepository);
   }
 }

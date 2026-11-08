@@ -1,4 +1,4 @@
-package com.tomo.common.auth.token;
+package com.tomo.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,8 +13,6 @@ import com.tomo.common.exception.ErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
-import com.tomo.user.service.LoginSessionService;
-import com.tomo.user.service.RefreshTokenService;
 import com.tomo.user.service.model.RefreshTokenValidationResult;
 import java.time.Clock;
 import java.time.Duration;
@@ -218,5 +216,16 @@ class RefreshTokenServiceTest {
             exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
 
     verifyNoInteractions(redisStringClient);
+  }
+
+  @Test
+  @DisplayName("DB 세션 삭제 이후 Redis Refresh Token을 폐기한다")
+  void revokesTokenAfterSessionDeletion() {
+    // when
+    service.revokeAfterSessionDeletion(SESSION_ID);
+
+    // then
+    verify(redisStringClient).delete(KEY);
+    verifyNoInteractions(loginSessionRepository);
   }
 }

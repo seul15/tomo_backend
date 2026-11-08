@@ -128,4 +128,34 @@ class UserPersistenceTest {
               assertThat(agreement.getAgreedYn()).isEqualTo("1");
             });
   }
+
+  @Test
+  @DisplayName("로그인 세션은 소유자가 일치할 때만 DB에서 삭제된다")
+  void deletesOnlyOwnedLoginSession() {
+    // given
+    User owner = userRepository.saveAndFlush(User.createPending());
+    User otherUser = userRepository.saveAndFlush(User.createPending());
+
+    LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+
+    LoginSession session =
+        loginSessionRepository.saveAndFlush(
+            LoginSession.create(owner.getId(), now, now.plusHours(1)));
+
+    Long sessionId = session.getId();
+
+    // when
+    long otherUserDeletion =
+        loginSessionRepository.deleteByIdAndUserId(sessionId, otherUser.getId());
+
+    long ownerDeletion = loginSessionRepository.deleteByIdAndUserId(sessionId, owner.getId());
+
+    loginSessionRepository.flush();
+    entityManager.clear();
+
+    // then
+    assertThat(otherUserDeletion).isZero();
+    assertThat(ownerDeletion).isEqualTo(1L);
+    assertThat(loginSessionRepository.findById(sessionId)).isEmpty();
+  }
 }
