@@ -4,18 +4,20 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.UUID;
 
 /** users 테이블에 대응하는 사용자 엔티티. */
 @Entity
 @Table(name = "users")
 public class User {
   @Id
+  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(name = "users_id", nullable = false, length = 36, updatable = false)
   private String id;
 
@@ -37,8 +39,7 @@ public class User {
 
   protected User() {}
 
-  private User(String id, LocalDateTime createdAt) {
-    this.id = id;
+  private User(LocalDateTime createdAt) {
     this.accountStatus = AccountStatus.PENDING;
     this.createdAt = createdAt;
     this.updatedAt = createdAt;
@@ -50,7 +51,7 @@ public class User {
    * @return 가입 대기 사용자
    */
   public static User createPending() {
-    return new User(UUID.randomUUID().toString(), LocalDateTime.now(ZoneOffset.UTC));
+    return new User(LocalDateTime.now(ZoneOffset.UTC));
   }
 
   @PreUpdate

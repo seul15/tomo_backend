@@ -2,12 +2,27 @@ package com.tomo.integration.redis;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Duration;
+import java.util.List;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 /** Redis 문자열 값의 저장, 조회, 삭제를 담당한다. */
 @Component
 public class RedisStringClient {
+  private static final DefaultRedisScript<Long> REPLACE_IF_MATCHES_SCRIPT =
+      new DefaultRedisScript<>(
+          "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2]); "
+              + "return 1 else return 0 end",
+          Long.class);
+
+  private static final DefaultRedisScript<Long> DELETE_IF_MATCHES_SCRIPT =
+      new DefaultRedisScript<>(
+          "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+              + "return redis.call('DEL', KEYS[1]) else return 0 end",
+          Long.class);
+
   private final StringRedisTemplate redisTemplate;
 
   /**
@@ -42,6 +57,47 @@ public class RedisStringClient {
    */
   public String get(String key) {
     return redisTemplate.opsForValue().get(key);
+  }
+
+  /**
+   * 기존 값이 일치할 때만 새 값과 TTL을 원자적으로 저장한다.
+   *
+   * @param key Redis 키
+   * @param expectedValue 기존 값
+   * @param newValue 새 값
+   * @param ttl 새 TTL
+   * @return 교체 성공 여부
+   * @throws IllegalArgumentException TTL이 1밀리초 미만인 경우
+   */
+  public boolean compareAndSetWithTtl(
+      String key, String expectedValue, String newValue, Duration ttl) {
+
+    if (ttl.isZero() || ttl.isNegative() || ttl.toMillis() < 1) {
+      throw new IllegalArgumentException("Redis TTL은 1밀리초 이상이어야 합니다.");
+    }
+
+    Long result =
+        redisTemplate.execute(
+            REPLACE_IF_MATCHES_SCRIPT,
+            List.of(key),
+            expectedValue,
+            newValue,
+            Long.toString(ttl.toMillis()));
+
+    return Long.valueOf(1L).equals(result);
+  }
+
+  /**
+   * 저장된 값이 일치하는 경우에만 Redis 키를 삭제한다.
+   *
+   * @param key Redis 키
+   * @param expectedValue 삭제 대상 값
+   * @return 삭제 성공 여부
+   */
+  public boolean deleteIfMatches(String key, String expectedValue) {
+    Long result = redisTemplate.execute(DELETE_IF_MATCHES_SCRIPT, List.of(key), expectedValue);
+
+    return Long.valueOf(1L).equals(result);
   }
 
   /**

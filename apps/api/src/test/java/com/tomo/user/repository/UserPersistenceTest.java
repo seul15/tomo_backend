@@ -41,18 +41,18 @@ class UserPersistenceTest {
   @Autowired private UserAgreementRepository userAgreementRepository;
 
   @Test
-  @DisplayName("신규 사용자는 UUID를 발급받고 가입 대기 상태로 저장된다")
+  @DisplayName("신규 사용자는 저장 시 UUID를 발급받고 가입 대기 상태로 저장된다")
   void savesPendingUser() {
     // given
     User user = User.createPending();
 
     // when
-    userRepository.saveAndFlush(user);
+    User savedUser = userRepository.saveAndFlush(user);
     entityManager.clear();
 
     // then
-    assertThat(UUID.fromString(user.getId())).isNotNull();
-    assertThat(userRepository.findById(user.getId()))
+    assertThat(UUID.fromString(savedUser.getId())).isNotNull();
+    assertThat(userRepository.findById(savedUser.getId()))
         .get()
         .extracting(User::getAccountStatus)
         .isEqualTo(AccountStatus.PENDING);

@@ -86,6 +86,83 @@ class RefreshTokenServiceTest {
   }
 
   @Test
+  @DisplayName("유효한 Refresh Token을 새로운 토큰으로 교체한다")
+  void rotatesValidRefreshToken() throws Exception {
+    // given
+    prepareValidSession();
+
+    String oldToken = "10." + "A".repeat(43);
+
+    String oldHash =
+        HexFormat.of()
+            .formatHex(
+                MessageDigest.getInstance("SHA-256")
+                    .digest(oldToken.getBytes(StandardCharsets.UTF_8)));
+
+    when(redisStringClient.compareAndSetWithTtl(
+            eq(KEY), eq(oldHash), anyString(), eq(Duration.ofMinutes(30))))
+        .thenReturn(true);
+
+    // when
+    String rotated = service.rotate(oldToken);
+
+    // then
+    ArgumentCaptor<String> newHash = ArgumentCaptor.forClass(String.class);
+
+    verify(redisStringClient)
+        .compareAndSetWithTtl(eq(KEY), eq(oldHash), newHash.capture(), eq(Duration.ofMinutes(30)));
+
+    String expectedHash =
+        HexFormat.of()
+            .formatHex(
+                MessageDigest.getInstance("SHA-256")
+                    .digest(rotated.getBytes(StandardCharsets.UTF_8)));
+
+    assertThat(rotated).startsWith("10.").isNotEqualTo(oldToken);
+    assertThat(newHash.getValue()).isEqualTo(expectedHash);
+  }
+
+  @Test
+  @DisplayName("기존 토큰 해시가 일치하지 않으면 갱신을 거부한다")
+  void rejectsConcurrentRotation() {
+    // given
+    prepareValidSession();
+
+    String oldToken = "10." + "A".repeat(43);
+
+    when(redisStringClient.compareAndSetWithTtl(
+            eq(KEY), anyString(), anyString(), eq(Duration.ofMinutes(30))))
+        .thenReturn(false);
+
+    // then
+    assertThatThrownBy(() -> service.rotate(oldToken))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_ACCESS_TOKEN));
+  }
+
+  @Test
+  @DisplayName("로그아웃 중 발급된 Refresh Token은 정리한다")
+  void rejectsTokenIssuedAfterLogout() {
+    // given
+    prepareValidSession();
+
+    when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true, false);
+
+    when(redisStringClient.setIfAbsent(eq(KEY), anyString(), eq(Duration.ofMinutes(30))))
+        .thenReturn(true);
+
+    // then
+    assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
+
+    verify(redisStringClient).deleteIfMatches(eq(KEY), anyString());
+  }
+
+  @Test
   @DisplayName("유효한 Refresh Token은 사용자와 로그인 세션을 반환한다")
   void findsValidSession() {
     // given

@@ -95,11 +95,7 @@ public class RefreshTokenService {
       throw new BusinessException(ErrorCode.UNAUTHORIZED);
     }
 
-    byte[] randomBytes = new byte[RANDOM_BYTES];
-    secureRandom.nextBytes(randomBytes);
-
-    String token =
-        sessionId + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    String token = newToken(sessionId);
 
     boolean stored = redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl);
 
@@ -107,7 +103,61 @@ public class RefreshTokenService {
       throw new BusinessException(ErrorCode.RESOURCE_CONFLICT);
     }
 
+    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
+      redisStringClient.deleteIfMatches(key(sessionId), hash(token));
+      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
+
     return token;
+  }
+
+  /**
+   * 기존 Refresh Token을 새 토큰으로 교체한다.
+   *
+   * @param currentToken 기존 Refresh Token
+   * @return 새 Refresh Token
+   * @throws BusinessException 토큰이나 로그인 세션이 유효하지 않은 경우
+   */
+  public String rotate(String currentToken) {
+    long sessionId = parseSessionId(currentToken);
+
+    if (sessionId <= 0) {
+      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+    }
+
+    LoginSession session =
+        loginSessionRepository
+            .findById(sessionId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN));
+
+    String userId = session.getUserId();
+
+    Duration ttl =
+        Duration.between(clock.instant(), session.getExpiresAt().toInstant(ZoneOffset.UTC));
+
+    if (ttl.isZero()
+        || ttl.isNegative()
+        || ttl.toMillis() < 1
+        || !loginSessionService.isValidAccessSession(userId, sessionId)) {
+      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+    }
+
+    String rotatedToken = newToken(sessionId);
+
+    boolean replaced =
+        redisStringClient.compareAndSetWithTtl(
+            key(sessionId), hash(currentToken), hash(rotatedToken), ttl);
+
+    if (!replaced) {
+      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+    }
+
+    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
+      redisStringClient.deleteIfMatches(key(sessionId), hash(rotatedToken));
+      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+    }
+
+    return rotatedToken;
   }
 
   /**
@@ -159,6 +209,13 @@ public class RefreshTokenService {
     }
 
     redisStringClient.delete(key(sessionId));
+  }
+
+  private String newToken(long sessionId) {
+    byte[] randomBytes = new byte[RANDOM_BYTES];
+    secureRandom.nextBytes(randomBytes);
+
+    return sessionId + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
   }
 
   private static String key(long sessionId) {
