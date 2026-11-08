@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -35,6 +36,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         .body(ErrorResponse.from(errorCode, request.getRequestId()));
   }
 
+  /**
+   * 접근 권한 부족 예외를 처리한다.
+   *
+   * @param exception 접근 권한 부족 예외
+   * @param request HTTP 요청
+   * @return 공통 403 오류 응답
+   */
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+      AccessDeniedException exception, HttpServletRequest request) {
+    return ResponseEntity.status(ErrorCode.FORBIDDEN.getHttpStatus())
+        .body(ErrorResponse.from(ErrorCode.FORBIDDEN, request.getRequestId()));
+  }
+
   @Override
   protected ResponseEntity<Object> handleExceptionInternal(
       Exception exception,
@@ -47,6 +62,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         switch (statusCode.value()) {
           case 400 -> ErrorCode.INVALID_REQUEST;
           case 401 -> ErrorCode.UNAUTHORIZED;
+          case 403 -> ErrorCode.FORBIDDEN;
           case 404 -> ErrorCode.RESOURCE_NOT_FOUND;
           case 409 -> ErrorCode.RESOURCE_CONFLICT;
           case 500 -> ErrorCode.INTERNAL_SERVER_ERROR;

@@ -1,5 +1,6 @@
 package com.tomo.common.auth.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -23,7 +24,11 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -40,6 +45,7 @@ class SecurityConfigTest {
 
   @Autowired private MockMvc mockMvc;
   @Autowired private AccessTokenProvider accessTokenProvider;
+  @Autowired private AccessDeniedHandler accessDeniedHandler;
 
   @MockitoBean private LoginSessionService loginSessionService;
 
@@ -146,6 +152,36 @@ class SecurityConfigTest {
         .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
   }
 
+  @Test
+  @DisplayName("권한 부족 요청에 공통 403 오류 응답을 반환한다")
+  void rejectsAccessDenied() throws Exception {
+    // given
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    // when
+    accessDeniedHandler.handle(request, response, new AccessDeniedException("Access denied"));
+
+    // then
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("\"code\":\"FORBIDDEN\"");
+  }
+
+  @Test
+  @DisplayName("인증된 요청에서 권한 부족 예외가 발생하면 403을 반환한다")
+  void handlesMvcAccessDenied() throws Exception {
+    // given
+    String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+    when(loginSessionService.isValidAccessSession("user-id", 10L)).thenReturn(true);
+
+    // when
+    ResultActions result =
+        mockMvc.perform(get("/api/denied").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
+
+    // then
+    result.andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+  }
+
   @RestController
   static class TestController {
 
@@ -169,6 +205,11 @@ class SecurityConfigTest {
     @PostMapping("/api/private")
     String privatePost() {
       return "ok";
+    }
+
+    @GetMapping("/api/denied")
+    String denied() {
+      throw new AccessDeniedException("Access denied");
     }
   }
 

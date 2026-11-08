@@ -19,6 +19,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /** API 문서 공개 경로와 Access Token 인증 정책을 설정한다. */
@@ -44,10 +45,30 @@ public class SecurityConfig {
   }
 
   /**
+   * 권한이 부족한 요청에 공통 오류 응답을 반환한다.
+   *
+   * @param objectMapper JSON 직렬화 객체
+   * @return 접근 권한 부족 처리기
+   */
+  @Bean
+  public AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
+    return (request, response, exception) -> {
+      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+      objectMapper.writeValue(
+          response.getOutputStream(),
+          ErrorResponse.from(ErrorCode.FORBIDDEN, request.getRequestId()));
+    };
+  }
+
+  /**
    * API 문서 공개 경로와 JWT 인증 필터를 구성한다.
    *
    * @param http HTTP 보안 설정
    * @param authenticationEntryPoint 인증 실패 처리기
+   * @param accessDeniedHandler 접근 권한 부족 처리기
    * @param accessTokenProvider Access Token 검증기 조회
    * @param accessSessionValidator 로그인 세션 조회
    * @param objectMapper JSON 직렬화 객체
@@ -58,6 +79,7 @@ public class SecurityConfig {
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       AuthenticationEntryPoint authenticationEntryPoint,
+      AccessDeniedHandler accessDeniedHandler,
       ObjectProvider<AccessTokenProvider> accessTokenProvider,
       ObjectProvider<AccessSessionValidator> accessSessionValidator,
       ObjectMapper objectMapper)
@@ -91,7 +113,10 @@ public class SecurityConfig {
                     .anyRequest()
                     .authenticated())
         .exceptionHandling(
-            exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
+            exception ->
+                exception
+                    .authenticationEntryPoint(authenticationEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
         .build();
   }
 }
