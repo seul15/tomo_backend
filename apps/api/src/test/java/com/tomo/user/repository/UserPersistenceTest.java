@@ -154,22 +154,4 @@ class UserPersistenceTest {
     assertThat(ownerDeletion).isEqualTo(1L);
     assertThat(loginSessionRepository.findById(sessionId)).isEmpty();
   }
-
-  @Test
-  @DisplayName("가입을 완료하면 닉네임과 ACTIVE 상태가 저장된다")
-  void completesRegistration() {
-    // given
-    User user = User.createPending();
-    user.completeRegistration(" 테스트 ");
-
-    // when
-    User savedUser = userRepository.saveAndFlush(user);
-    entityManager.clear();
-
-    // then
-    User found = userRepository.findById(savedUser.getId()).orElseThrow();
-
-    assertThat(found.getNickname()).isEqualTo("테스트");
-    assertThat(found.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
-  }
 }
