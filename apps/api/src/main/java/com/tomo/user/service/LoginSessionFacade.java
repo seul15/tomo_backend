@@ -2,11 +2,14 @@ package com.tomo.user.service;
 
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /** 로그인 세션과 Refresh Token의 폐기를 조정한다. */
 @Service
 public class LoginSessionFacade {
+  private static final Logger LOG = LoggerFactory.getLogger(LoginSessionFacade.class);
 
   private final LoginSessionService loginSessionService;
   private final RefreshTokenService refreshTokenService;
@@ -41,6 +44,10 @@ public class LoginSessionFacade {
       throw new BusinessException(ErrorCode.UNAUTHORIZED);
     }
 
-    refreshTokenService.revokeAfterSessionDeletion(sessionId);
+    try {
+      refreshTokenService.revokeAfterSessionDeletion(sessionId);
+    } catch (RuntimeException exception) {
+      LOG.warn("로그아웃 후 Refresh Token 정리 실패. sessionId={}", sessionId, exception);
+    }
   }
 }

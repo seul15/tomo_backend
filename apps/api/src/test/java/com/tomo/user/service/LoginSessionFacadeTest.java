@@ -2,6 +2,7 @@ package com.tomo.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,12 +50,31 @@ class LoginSessionFacadeTest {
   }
 
   @Test
+  @DisplayName("DB 세션 삭제 후 Redis 정리에 실패해도 로그아웃을 완료한다")
+  void completesLogoutWhenRedisCleanupFails() {
+    // given
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+
+    doThrow(new IllegalStateException("Redis unavailable"))
+        .when(refreshTokenService)
+        .revokeAfterSessionDeletion(SESSION_ID);
+
+    // when
+    facade.logout(USER_ID, SESSION_ID);
+
+    // then
+    InOrder inOrder = inOrder(loginSessionService, refreshTokenService);
+    inOrder.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
+    inOrder.verify(refreshTokenService).revokeAfterSessionDeletion(SESSION_ID);
+  }
+
+  @Test
   @DisplayName("세션 삭제 권한이 없으면 Refresh Token을 폐기하지 않는다")
   void rejectsUnauthorizedLogout() {
     // given
     when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(false);
 
-    // when & then
+    // then
     assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
@@ -66,7 +86,7 @@ class LoginSessionFacadeTest {
   @Test
   @DisplayName("잘못된 사용자 ID로 로그아웃하면 세션과 토큰을 변경하지 않는다")
   void rejectsInvalidLogoutRequest() {
-    // when & then
+    // then
     assertThatThrownBy(() -> facade.logout("", SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,

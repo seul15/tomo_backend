@@ -146,32 +146,6 @@ public class RefreshTokenService {
   }
 
   /**
-   * 본인 로그인 세션의 Refresh Token을 폐기한다.
-   *
-   * <p>세션 소유자를 확인한 후 Redis의 Refresh Token을 삭제한다. DB 로그인 세션 무효화는 별도 로그아웃 흐름에서 수행한다.
-   *
-   * @param userId 검증된 사용자 ID
-   * @param sessionId 로그인 세션 ID
-   * @throws BusinessException 요청값이 올바르지 않거나 세션 접근 권한이 없는 경우
-   */
-  public void revoke(String userId, long sessionId) {
-    if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
-    }
-
-    LoginSession session =
-        loginSessionRepository
-            .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-
-    if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
-    }
-
-    revokeAfterSessionDeletion(sessionId);
-  }
-
-  /**
    * DB 로그인 세션 삭제 이후 연결된 Refresh Token을 폐기한다.
    *
    * <p>호출 측에서 세션 소유자 검증과 DB 삭제를 완료해야 한다.

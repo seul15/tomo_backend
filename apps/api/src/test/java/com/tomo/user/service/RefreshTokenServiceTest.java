@@ -14,11 +14,14 @@ import com.tomo.integration.redis.RedisStringClient;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.service.model.RefreshTokenValidationResult;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.HexFormat;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,7 +58,7 @@ class RefreshTokenServiceTest {
 
   @Test
   @DisplayName("Refresh Token을 발급하면 원문이 아닌 해시를 저장한다")
-  void issuesHashedToken() {
+  void issuesHashedToken() throws Exception {
     // given
     prepareValidSession();
 
@@ -73,6 +76,13 @@ class RefreshTokenServiceTest {
     assertThat(token).startsWith("10.");
     assertThat(hash.getValue()).matches("[0-9a-f]{64}");
     assertThat(hash.getValue()).isNotEqualTo(token);
+
+    byte[] digest =
+        MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+
+    String expectedHash = HexFormat.of().formatHex(digest);
+
+    assertThat(hash.getValue()).isEqualTo(expectedHash);
   }
 
   @Test
@@ -116,6 +126,33 @@ class RefreshTokenServiceTest {
   }
 
   @Test
+  @DisplayName("세션 ID가 같아도 다른 Refresh Token은 검증에 실패한다")
+  void rejectsDifferentTokenForSameSession() {
+    // given
+    prepareValidSession();
+
+    when(redisStringClient.setIfAbsent(eq(KEY), anyString(), eq(Duration.ofMinutes(30))))
+        .thenReturn(true);
+
+    String token = service.issue(USER_ID, SESSION_ID);
+
+    ArgumentCaptor<String> hash = ArgumentCaptor.forClass(String.class);
+
+    verify(redisStringClient).setIfAbsent(eq(KEY), hash.capture(), eq(Duration.ofMinutes(30)));
+
+    when(redisStringClient.get(KEY)).thenReturn(hash.getValue());
+
+    String differentToken =
+        token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+
+    // when
+    Optional<RefreshTokenValidationResult> result = service.findValidSession(differentToken);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
   @DisplayName("형식이 잘못된 Refresh Token은 Redis 조회 없이 거부한다")
   void rejectsMalformedToken() {
     // when
@@ -135,7 +172,7 @@ class RefreshTokenServiceTest {
     when(session.getExpiresAt())
         .thenReturn(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
 
-    // when & then
+    // then
     assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
@@ -153,26 +190,12 @@ class RefreshTokenServiceTest {
     when(redisStringClient.setIfAbsent(eq(KEY), anyString(), eq(Duration.ofMinutes(30))))
         .thenReturn(false);
 
-    // when & then
+    // then
     assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.RESOURCE_CONFLICT));
-  }
-
-  @Test
-  @DisplayName("본인 로그인 세션의 Refresh Token을 폐기한다")
-  void revokesToken() {
-    // given
-    when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
-    when(session.getUserId()).thenReturn(USER_ID);
-
-    // when
-    service.revoke(USER_ID, SESSION_ID);
-
-    // then
-    verify(redisStringClient).delete(KEY);
   }
 
   private void prepareValidSession() {
@@ -193,24 +216,8 @@ class RefreshTokenServiceTest {
     when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
     when(session.getUserId()).thenReturn("other-user");
 
-    // when & then
+    // then
     assertThatThrownBy(() -> service.issue(USER_ID, SESSION_ID))
-        .isInstanceOfSatisfying(
-            BusinessException.class,
-            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
-
-    verifyNoInteractions(redisStringClient);
-  }
-
-  @Test
-  @DisplayName("다른 사용자 세션의 Refresh Token을 폐기할 수 없다")
-  void rejectsOtherUsersRevoke() {
-    // given
-    when(loginSessionRepository.findById(SESSION_ID)).thenReturn(Optional.of(session));
-    when(session.getUserId()).thenReturn("other-user");
-
-    // when & then
-    assertThatThrownBy(() -> service.revoke(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
