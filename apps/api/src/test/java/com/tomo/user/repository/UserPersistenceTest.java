@@ -110,12 +110,7 @@ class UserPersistenceTest {
 
     // when
     userAgreementRepository.saveAndFlush(
-        UserAgreement.record(
-            user.getId(),
-            AgreementType.TERMS_AGREED,
-            document.getId(),
-            true,
-            LocalDateTime.now(ZoneOffset.UTC)));
+        UserAgreement.record(user.getId(), document, true, LocalDateTime.now(ZoneOffset.UTC)));
 
     entityManager.clear();
 
@@ -125,6 +120,7 @@ class UserPersistenceTest {
         .satisfies(
             agreement -> {
               assertThat(agreement.getDocumentVersionId()).isEqualTo(document.getId());
+              assertThat(agreement.getAgreementType()).isEqualTo(document.getDocumentType());
               assertThat(agreement.getAgreedYn()).isEqualTo("1");
             });
   }

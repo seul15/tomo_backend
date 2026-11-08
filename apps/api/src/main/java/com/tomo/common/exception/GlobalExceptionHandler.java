@@ -66,12 +66,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
           case 404 -> ErrorCode.RESOURCE_NOT_FOUND;
           case 409 -> ErrorCode.RESOURCE_CONFLICT;
           case 500 -> ErrorCode.INTERNAL_SERVER_ERROR;
-          default -> null;
+          default ->
+              statusCode.is4xxClientError()
+                  ? ErrorCode.INVALID_REQUEST
+                  : ErrorCode.INTERNAL_SERVER_ERROR;
         };
-
-    if (errorCode == null) {
-      return super.handleExceptionInternal(exception, body, headers, statusCode, request);
-    }
 
     String requestId = ((ServletWebRequest) request).getRequest().getRequestId();
 

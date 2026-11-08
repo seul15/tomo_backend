@@ -9,11 +9,15 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 /** user_agreement 테이블에 대응하는 회원 가입 동의 이력. */
 @Entity
 @Table(name = "user_agreement")
 public class UserAgreement {
+  private static final String AGREED = "1";
+  private static final String NOT_AGREED = "0";
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "user_agreement_id")
@@ -46,27 +50,28 @@ public class UserAgreement {
     this.userId = userId;
     this.agreementType = agreementType;
     this.documentVersionId = documentVersionId;
-    this.agreedYn = agreed ? "1" : "0";
+    this.agreedYn = agreed ? AGREED : NOT_AGREED;
     this.agreedAt = agreedAt;
   }
 
   /**
-   * 해당 문서 버전에 대한 동의 여부 이력을 생성한다.
+   * 문서 버전과 일치하는 동의 유형으로 동의 이력을 생성한다.
    *
    * @param userId 사용자 ID
-   * @param agreementType 동의 항목
-   * @param documentVersionId 문서 버전 ID
+   * @param documentVersion 저장된 동의 대상 문서 버전
    * @param agreed 동의 여부
    * @param agreedAt 동의 처리 시각
    * @return 동의 이력 엔티티
+   * @throws NullPointerException 문서 또는 문서 버전 ID가 없는 경우
    */
   public static UserAgreement record(
-      String userId,
-      AgreementType agreementType,
-      Long documentVersionId,
-      boolean agreed,
-      LocalDateTime agreedAt) {
-    return new UserAgreement(userId, agreementType, documentVersionId, agreed, agreedAt);
+      String userId, DocumentVersion documentVersion, boolean agreed, LocalDateTime agreedAt) {
+    Objects.requireNonNull(documentVersion);
+
+    Long documentVersionId = Objects.requireNonNull(documentVersion.getId());
+
+    return new UserAgreement(
+        userId, documentVersion.getDocumentType(), documentVersionId, agreed, agreedAt);
   }
 
   public Long getId() {
