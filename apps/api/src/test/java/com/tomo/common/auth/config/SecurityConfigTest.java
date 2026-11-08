@@ -2,6 +2,7 @@ package com.tomo.common.auth.config;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -28,6 +29,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @WebMvcTest(SecurityConfigTest.TestController.class)
@@ -116,6 +118,34 @@ class SecurityConfigTest {
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
   }
 
+  @Test
+  @DisplayName("유효한 JWT가 있으면 CSRF 토큰 없이 POST 요청할 수 있다")
+  void allowsAuthenticatedPostWithoutCsrfToken() throws Exception {
+    // given
+    String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+
+    when(loginSessionService.isValidAccessSession("user-id", 10L)).thenReturn(true);
+
+    // when
+    ResultActions result =
+        mockMvc.perform(post("/api/private").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
+
+    // then
+    result.andExpect(status().isOk()).andExpect(content().string("ok"));
+  }
+
+  @Test
+  @DisplayName("JWT가 없는 POST 요청은 401을 반환한다")
+  void rejectsUnauthenticatedPost() throws Exception {
+    // when
+    ResultActions result = mockMvc.perform(post("/api/private"));
+
+    // then
+    result
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+  }
+
   @RestController
   static class TestController {
 
@@ -134,6 +164,11 @@ class SecurityConfigTest {
     @GetMapping("/api/me")
     String currentUser(@AuthenticationPrincipal String userId) {
       return userId;
+    }
+
+    @PostMapping("/api/private")
+    String privatePost() {
+      return "ok";
     }
   }
 

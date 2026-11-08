@@ -70,7 +70,8 @@ public class SecurityConfig {
           UsernamePasswordAuthenticationFilter.class);
     }
 
-    return http.formLogin(AbstractHttpConfigurer::disable)
+    return http.csrf(AbstractHttpConfigurer::disable)
+        .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
