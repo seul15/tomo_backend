@@ -9,7 +9,6 @@ import com.tomo.common.response.ErrorResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -69,8 +68,8 @@ public class SecurityConfig {
    * @param http HTTP 보안 설정
    * @param authenticationEntryPoint 인증 실패 처리기
    * @param accessDeniedHandler 접근 권한 부족 처리기
-   * @param accessTokenProvider Access Token 검증기 조회
-   * @param accessSessionValidator 로그인 세션 조회
+   * @param accessTokenProvider Access Token 검증기
+   * @param accessSessionValidator 로그인 세션 검증기
    * @param objectMapper JSON 직렬화 객체
    * @return 보안 필터 체인
    * @throws Exception 필터 체인 구성 실패 시
@@ -80,17 +79,14 @@ public class SecurityConfig {
       HttpSecurity http,
       AuthenticationEntryPoint authenticationEntryPoint,
       AccessDeniedHandler accessDeniedHandler,
-      ObjectProvider<AccessTokenProvider> accessTokenProvider,
-      ObjectProvider<AccessSessionValidator> accessSessionValidator,
+      AccessTokenProvider accessTokenProvider,
+      AccessSessionValidator accessSessionValidator,
       ObjectMapper objectMapper)
       throws Exception {
-    AccessTokenProvider provider = accessTokenProvider.getIfAvailable();
 
-    if (provider != null) {
-      http.addFilterBefore(
-          new JwtAuthenticationFilter(provider, accessSessionValidator.getObject(), objectMapper),
-          UsernamePasswordAuthenticationFilter.class);
-    }
+    http.addFilterBefore(
+        new JwtAuthenticationFilter(accessTokenProvider, accessSessionValidator, objectMapper),
+        UsernamePasswordAuthenticationFilter.class);
 
     return http.csrf(AbstractHttpConfigurer::disable)
         .formLogin(AbstractHttpConfigurer::disable)

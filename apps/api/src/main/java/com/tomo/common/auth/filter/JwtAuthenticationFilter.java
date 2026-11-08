@@ -15,6 +15,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,7 +28,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** 요청의 Access Token과 로그인 세션을 검증해 인증 사용자를 등록한다. */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-  private static final String BEARER_PREFIX = "Bearer ";
+  private static final Logger LOG = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
+  private static final Pattern BEARER_TOKEN_PATTERN =
+      Pattern.compile("(?i)^Bearer[ \\t]+([^ \\t]+)[ \\t]*$");
 
   private final AccessTokenProvider accessTokenProvider;
   private final ObjectWriter objectWriter;
@@ -69,7 +76,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
 
-    if (!authorization.startsWith(BEARER_PREFIX)) {
+    Matcher matcher = BEARER_TOKEN_PATTERN.matcher(authorization);
+
+    if (!matcher.matches()) {
       reject(request, response);
       return;
     }
@@ -77,14 +86,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     AccessTokenClaims claims;
 
     try {
-      String accessToken = authorization.substring(BEARER_PREFIX.length());
-      claims = accessTokenProvider.verify(accessToken);
+      claims = accessTokenProvider.verify(matcher.group(1));
     } catch (BusinessException exception) {
       reject(request, response);
       return;
     }
 
-    if (!accessSessionValidator.isValidAccessSession(claims.userId(), claims.loginSessionId())) {
+    boolean validSession;
+
+    try {
+      validSession =
+          accessSessionValidator.isValidAccessSession(claims.userId(), claims.loginSessionId());
+    } catch (RuntimeException exception) {
+      SecurityContextHolder.clearContext();
+
+      LOG.error("로그인 세션 검증 실패. requestId={}", request.getRequestId(), exception);
+
+      response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+      response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+      objectWriter.writeValue(
+          response.getOutputStream(),
+          ErrorResponse.from(ErrorCode.INTERNAL_SERVER_ERROR, request.getRequestId()));
+      return;
+    }
+
+    if (!validSession) {
       reject(request, response);
       return;
     }

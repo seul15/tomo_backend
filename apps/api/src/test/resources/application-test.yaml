@@ -28,6 +28,8 @@ scalar:
   enabled: false
 
 tomo:
+  auth:
+    jwt-secret-base64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   redis:
     redisson:
       enabled: false

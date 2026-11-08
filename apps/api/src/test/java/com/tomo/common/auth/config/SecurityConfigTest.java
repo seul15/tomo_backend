@@ -124,6 +124,41 @@ class SecurityConfigTest {
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"bearer", "BEARER", "Bearer"})
+  @DisplayName("Bearer 인증 스킴의 대소문자에 관계없이 유효한 토큰을 인증한다")
+  void authenticatesBearerSchemeIgnoringCase(String scheme) throws Exception {
+    // given
+    String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+    when(loginSessionService.isValidAccessSession("user-id", 10L)).thenReturn(true);
+
+    // when
+    ResultActions result =
+        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, scheme + "   " + token));
+
+    // then
+    result.andExpect(status().isOk()).andExpect(content().string("user-id"));
+  }
+
+  @Test
+  @DisplayName("로그인 세션 검증 중 서버 오류가 발생하면 공통 500 응답을 반환한다")
+  void handlesSessionValidationFailure() throws Exception {
+    // given
+    String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+
+    when(loginSessionService.isValidAccessSession("user-id", 10L))
+        .thenThrow(new IllegalStateException("DB unavailable"));
+
+    // when
+    ResultActions result =
+        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
+
+    // then
+    result
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"));
+  }
+
   @Test
   @DisplayName("유효한 JWT가 있으면 CSRF 토큰 없이 POST 요청할 수 있다")
   void allowsAuthenticatedPostWithoutCsrfToken() throws Exception {

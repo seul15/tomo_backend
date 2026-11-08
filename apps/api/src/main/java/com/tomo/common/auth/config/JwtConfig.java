@@ -5,7 +5,6 @@ import io.jsonwebtoken.security.Keys;
 import java.time.Clock;
 import java.util.Base64;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -30,7 +29,6 @@ public class JwtConfig {
    * @return 서명·검증을 담당하는 코덱
    */
   @Bean
-  @ConditionalOnProperty(name = "tomo.auth.jwt-secret-base64")
   public AccessTokenProvider jwtAccessTokenCodec(
       @Value("${tomo.auth.jwt-secret-base64}") String base64Key, Clock clock) {
     byte[] secret = Base64.getDecoder().decode(base64Key);
