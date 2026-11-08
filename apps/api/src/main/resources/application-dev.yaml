@@ -99,3 +99,6 @@ management:
     tags:
       application: ${spring.application.name}
       environment: dev
+
+server:
+  forward-headers-strategy: framework

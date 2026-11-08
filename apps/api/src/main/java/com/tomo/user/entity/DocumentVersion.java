@@ -11,6 +11,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
+import java.util.Objects;
 
 /** document_versions 테이블에 대응하는 약관 문서 버전. */
 @Entity
@@ -73,11 +74,11 @@ public class DocumentVersion {
       LocalDate effectiveDate,
       DocumentPublicationStatus status) {
 
-    java.util.Objects.requireNonNull(type);
-    java.util.Objects.requireNonNull(version);
-    java.util.Objects.requireNonNull(body);
-    java.util.Objects.requireNonNull(effectiveDate);
-    java.util.Objects.requireNonNull(status);
+    Objects.requireNonNull(type);
+    Objects.requireNonNull(version);
+    Objects.requireNonNull(body);
+    Objects.requireNonNull(effectiveDate);
+    Objects.requireNonNull(status);
 
     return new DocumentVersion(type, version, body, effectiveDate, status);
   }
