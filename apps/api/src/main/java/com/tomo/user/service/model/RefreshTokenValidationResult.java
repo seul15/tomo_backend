@@ -1,4 +1,4 @@
-package com.tomo.common.auth.token;
+package com.tomo.user.service.model;
 
 /**
  * 검증된 Refresh Token의 사용자 및 로그인 세션 식별값.

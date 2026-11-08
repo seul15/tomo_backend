@@ -1,8 +1,10 @@
 package com.tomo.user.service;
 
+import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -11,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Access 인증에 사용되는 사용자와 로그인 세션의 유효성을 조회한다. */
 @Service
-public class LoginSessionService {
+public class LoginSessionService implements AccessSessionValidator {
   private final UserRepository userRepository;
   private final LoginSessionRepository loginSessionRepository;
   private final Clock clock;
@@ -23,6 +25,9 @@ public class LoginSessionService {
    * @param loginSessionRepository 로그인 세션 저장소
    * @param clock 인증 시각 확인에 사용할 시계
    */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "Spring이 관리하는 JPA Repository를 공유 의존성으로 주입받는다.")
   public LoginSessionService(
       UserRepository userRepository, LoginSessionRepository loginSessionRepository, Clock clock) {
     this.userRepository = userRepository;
@@ -37,6 +42,7 @@ public class LoginSessionService {
    * @param sessionId 로그인 세션 ID
    * @return 인증에 유효한 사용자와 세션이면 true
    */
+  @Override
   @Transactional(readOnly = true)
   public boolean isValidAccessSession(String userId, long sessionId) {
     if (userId == null || userId.isBlank() || sessionId <= 0) {
@@ -60,5 +66,21 @@ public class LoginSessionService {
         .filter(session -> userId.equals(session.getUserId()))
         .filter(session -> session.getExpiresAt().isAfter(now))
         .isPresent();
+  }
+
+  /**
+   * 지정된 사용자가 소유한 로그인 세션을 삭제한다.
+   *
+   * @param userId 세션 소유자 ID
+   * @param sessionId 로그인 세션 ID
+   * @return 해당 사용자의 세션이 삭제되었으면 true
+   */
+  @Transactional
+  public boolean invalidateOwnedSession(String userId, long sessionId) {
+    if (userId == null || userId.isBlank() || sessionId <= 0) {
+      return false;
+    }
+
+    return loginSessionRepository.deleteByIdAndUserId(sessionId, userId) > 0;
   }
 }

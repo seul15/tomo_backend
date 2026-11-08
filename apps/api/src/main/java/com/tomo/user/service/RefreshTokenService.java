@@ -1,11 +1,11 @@
-package com.tomo.common.auth.token;
+package com.tomo.user.service;
 
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.ErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
-import com.tomo.user.service.LoginSessionService;
+import com.tomo.user.service.model.RefreshTokenValidationResult;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -166,6 +166,22 @@ public class RefreshTokenService {
 
     if (!userId.equals(session.getUserId())) {
       throw new BusinessException(ErrorCode.UNAUTHORIZED);
+    }
+
+    revokeAfterSessionDeletion(sessionId);
+  }
+
+  /**
+   * DB 로그인 세션 삭제 이후 연결된 Refresh Token을 폐기한다.
+   *
+   * <p>호출 측에서 세션 소유자 검증과 DB 삭제를 완료해야 한다.
+   *
+   * @param sessionId 삭제 완료한 로그인 세션 ID
+   * @throws BusinessException 세션 ID가 올바르지 않은 경우
+   */
+  public void revokeAfterSessionDeletion(long sessionId) {
+    if (sessionId <= 0) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }
 
     redisStringClient.delete(key(sessionId));

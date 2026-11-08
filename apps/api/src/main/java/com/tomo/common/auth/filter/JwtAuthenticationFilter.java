@@ -2,12 +2,12 @@ package com.tomo.common.auth.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.ErrorCode;
 import com.tomo.common.response.ErrorResponse;
-import com.tomo.user.service.LoginSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,22 +27,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private static final String BEARER_PREFIX = "Bearer ";
 
   private final AccessTokenProvider accessTokenProvider;
-  private final LoginSessionService loginSessionService;
   private final ObjectWriter objectWriter;
+  private final AccessSessionValidator accessSessionValidator;
 
   /**
    * Access 인증에 필요한 의존성을 주입한다.
    *
    * @param accessTokenProvider Access Token 검증기
-   * @param loginSessionService 로그인 세션 조회 서비스
+   * @param accessSessionValidator 로그인 세션 유효성 검증 계약
    * @param objectMapper 공통 오류 응답 직렬화 객체
    */
   public JwtAuthenticationFilter(
       AccessTokenProvider accessTokenProvider,
-      LoginSessionService loginSessionService,
+      AccessSessionValidator accessSessionValidator,
       ObjectMapper objectMapper) {
     this.accessTokenProvider = accessTokenProvider;
-    this.loginSessionService = loginSessionService;
+    this.accessSessionValidator = accessSessionValidator;
     this.objectWriter = objectMapper.writer();
   }
 
@@ -84,7 +84,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
 
-    if (!loginSessionService.isValidAccessSession(claims.userId(), claims.loginSessionId())) {
+    if (!accessSessionValidator.isValidAccessSession(claims.userId(), claims.loginSessionId())) {
       reject(request, response);
       return;
     }

@@ -2,10 +2,10 @@ package com.tomo.common.auth.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tomo.common.auth.filter.JwtAuthenticationFilter;
+import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.ErrorCode;
 import com.tomo.common.response.ErrorResponse;
-import com.tomo.user.service.LoginSessionService;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +49,7 @@ public class SecurityConfig {
    * @param http HTTP 보안 설정
    * @param authenticationEntryPoint 인증 실패 처리기
    * @param accessTokenProvider Access Token 검증기 조회
-   * @param loginSessionService 로그인 세션 조회
+   * @param accessSessionValidator 로그인 세션 조회
    * @param objectMapper JSON 직렬화 객체
    * @return 보안 필터 체인
    * @throws Exception 필터 체인 구성 실패 시
@@ -59,14 +59,14 @@ public class SecurityConfig {
       HttpSecurity http,
       AuthenticationEntryPoint authenticationEntryPoint,
       ObjectProvider<AccessTokenProvider> accessTokenProvider,
-      ObjectProvider<LoginSessionService> loginSessionService,
+      ObjectProvider<AccessSessionValidator> accessSessionValidator,
       ObjectMapper objectMapper)
       throws Exception {
     AccessTokenProvider provider = accessTokenProvider.getIfAvailable();
 
     if (provider != null) {
       http.addFilterBefore(
-          new JwtAuthenticationFilter(provider, loginSessionService.getObject(), objectMapper),
+          new JwtAuthenticationFilter(provider, accessSessionValidator.getObject(), objectMapper),
           UsernamePasswordAuthenticationFilter.class);
     }
 
