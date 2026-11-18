@@ -16,4 +16,12 @@ public interface SocialIdentityRepository extends JpaRepository<SocialIdentity, 
    */
   Optional<SocialIdentity> findByProviderAndProviderSubject(
       SocialProvider provider, String providerSubject);
+
+  /**
+   * 사용자 ID로 소셜 계정 연결 정보를 조회한다.
+   *
+   * @param userId 사용자 ID
+   * @return 사용자의 소셜 계정 연결 정보
+   */
+  Optional<SocialIdentity> findByUserId(String userId);
 }
