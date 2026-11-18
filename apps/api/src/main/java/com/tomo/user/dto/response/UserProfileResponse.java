@@ -2,7 +2,6 @@ package com.tomo.user.dto.response;
 
 import com.tomo.user.service.model.UserProfileResult;
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.util.Locale;
 
 /**
  * 내 계정 및 프로필 조회 응답.
@@ -29,9 +28,9 @@ public record UserProfileResponse(
             requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String email,
     @Schema(
-            description = "소셜 인증 제공자 (google 또는 kakao)",
-            allowableValues = {"google", "kakao"},
-            example = "google",
+            description = "소셜 인증 제공자 (GOOGLE 또는 KAKAO)",
+            allowableValues = {"GOOGLE", "KAKAO"},
+            example = "GOOGLE",
             requiredMode = Schema.RequiredMode.REQUIRED)
         String provider) {
 
@@ -43,9 +42,6 @@ public record UserProfileResponse(
    */
   public static UserProfileResponse from(UserProfileResult result) {
     return new UserProfileResponse(
-        result.nickname(),
-        result.profileImageUrl(),
-        result.email(),
-        result.provider().name().toLowerCase(Locale.ROOT));
+        result.nickname(), result.profileImageUrl(), result.email(), result.provider().name());
   }
 }

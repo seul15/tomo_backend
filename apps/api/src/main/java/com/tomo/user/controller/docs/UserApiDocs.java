@@ -44,14 +44,14 @@ public interface UserApiDocs {
                 examples =
                     @ExampleObject(
                         value =
-                            """
+"""
                                           {
                                             "success": true,
                                             "data": {
                                               "nickname": "집중토모",
                                               "profileImageUrl": null,
                                               "email": "test@google.com",
-                                              "provider": "google"
+"provider": "GOOGLE"
                                             },
                                             "meta": {
                                               "requestId": "example-request-id",

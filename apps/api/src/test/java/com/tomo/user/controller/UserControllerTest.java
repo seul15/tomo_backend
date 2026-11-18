@@ -71,7 +71,7 @@ class UserControllerTest {
         .andExpect(jsonPath("$.data.nickname").value("집중토모"))
         .andExpect(jsonPath("$.data.profileImageUrl").value(IMAGE_URL))
         .andExpect(jsonPath("$.data.email").value("test@google.com"))
-        .andExpect(jsonPath("$.data.provider").value("google"))
+        .andExpect(jsonPath("$.data.provider").value("GOOGLE"))
         .andExpect(jsonPath("$.meta.requestId").exists())
         .andExpect(jsonPath("$.meta.timestamp").isNotEmpty())
         .andExpect(jsonPath("$.data.providerSubject").doesNotExist())
@@ -82,7 +82,7 @@ class UserControllerTest {
   }
 
   @Test
-  @DisplayName("이메일이 없는 카카오 사용자는 email null과 provider kakao를 반환한다")
+  @DisplayName("이메일이 없는 카카오 사용자는 email null과 provider KAKAO를 반환한다")
   void returnsNullEmailForKakaoUser() throws Exception {
     // given
     String token = accessToken();
@@ -98,7 +98,7 @@ class UserControllerTest {
     result
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.email").value(nullValue()))
-        .andExpect(jsonPath("$.data.provider").value("kakao"));
+        .andExpect(jsonPath("$.data.provider").value("KAKAO"));
   }
 
   @Test
