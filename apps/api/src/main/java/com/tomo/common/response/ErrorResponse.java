@@ -19,7 +19,7 @@ public record ErrorResponse(boolean success, Error error, ResponseMeta meta) {
    */
   public static ErrorResponse from(ErrorCode errorCode, String requestId) {
     return new ErrorResponse(
-        false, new Error(errorCode.name(), errorCode.getMessage()), ResponseMeta.from(requestId));
+        false, new Error(errorCode.code(), errorCode.message()), ResponseMeta.from(requestId));
   }
 
   /**

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tomo.common.auth.filter.JwtAuthenticationFilter;
 import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenProvider;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.common.response.ErrorResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -39,7 +39,7 @@ public class SecurityConfig {
 
       objectMapper.writeValue(
           response.getOutputStream(),
-          ErrorResponse.from(ErrorCode.UNAUTHORIZED, request.getRequestId()));
+          ErrorResponse.from(CommonErrorCode.UNAUTHORIZED, request.getRequestId()));
     };
   }
 
@@ -58,7 +58,7 @@ public class SecurityConfig {
 
       objectMapper.writeValue(
           response.getOutputStream(),
-          ErrorResponse.from(ErrorCode.FORBIDDEN, request.getRequestId()));
+          ErrorResponse.from(CommonErrorCode.FORBIDDEN, request.getRequestId()));
     };
   }
 

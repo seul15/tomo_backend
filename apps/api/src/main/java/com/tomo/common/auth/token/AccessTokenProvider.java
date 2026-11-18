@@ -1,7 +1,7 @@
 package com.tomo.common.auth.token;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
@@ -78,7 +78,7 @@ public final class AccessTokenProvider {
    */
   public AccessTokenClaims verify(String token) {
     if (token == null || token.isBlank()) {
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
     try {
       Jws<Claims> parsed =
@@ -95,20 +95,20 @@ public final class AccessTokenProvider {
           || subject == null
           || subject.isBlank()
           || (!(sid instanceof Long) && !(sid instanceof Integer))) {
-        throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+        throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
       }
       long sessionId = ((Number) sid).longValue();
       if (sessionId <= 0) {
-        throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+        throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
       }
       if (claims.getExpiration() == null
           || claims.getIssuedAt() == null
           || claims.getIssuedAt().after(Date.from(clock.instant()))) {
-        throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+        throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
       }
       return new AccessTokenClaims(subject, sessionId);
     } catch (JwtException | IllegalArgumentException e) {
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
   }
 }

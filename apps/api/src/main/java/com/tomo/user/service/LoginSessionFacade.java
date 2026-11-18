@@ -1,7 +1,7 @@
 package com.tomo.user.service;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.LoginSession;
 import org.springframework.stereotype.Service;
 
@@ -32,7 +32,7 @@ public class LoginSessionFacade {
    */
   public void logout(String userId, long sessionId) {
     if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
     }
 
     LoginSession session = loginSessionService.requireOwnedSession(userId, sessionId);

@@ -1,7 +1,7 @@
 package com.tomo.user.service;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
@@ -74,27 +74,27 @@ public class RefreshTokenService {
    */
   public String issue(String userId, long sessionId) {
     if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
     }
 
     LoginSession session =
         loginSessionRepository
             .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
     if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
     }
 
     Instant expiresAt = session.getExpiresAt().toInstant(ZoneOffset.UTC);
     Duration ttl = Duration.between(clock.instant(), expiresAt);
 
     if (ttl.isZero() || ttl.isNegative()) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
     }
 
     if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
     }
 
     String token = newToken(sessionId);
@@ -102,12 +102,12 @@ public class RefreshTokenService {
     boolean stored = redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl);
 
     if (!stored) {
-      throw new BusinessException(ErrorCode.RESOURCE_CONFLICT);
+      throw new BusinessException(CommonErrorCode.RESOURCE_CONFLICT);
     }
 
     if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
       redisStringClient.deleteIfMatches(key(sessionId), hash(token));
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
+      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
     }
 
     return token;
@@ -124,13 +124,13 @@ public class RefreshTokenService {
     long sessionId = parseSessionId(currentToken);
 
     if (sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     LoginSession session =
         loginSessionRepository
             .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN));
+            .orElseThrow(() -> new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN));
 
     String userId = session.getUserId();
 
@@ -141,7 +141,7 @@ public class RefreshTokenService {
         || ttl.isNegative()
         || ttl.toMillis() < 1
         || !loginSessionService.isValidAccessSession(userId, sessionId)) {
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     String rotatedToken = newToken(sessionId);
@@ -151,12 +151,12 @@ public class RefreshTokenService {
             key(sessionId), hash(currentToken), hash(rotatedToken), ttl);
 
     if (!replaced) {
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
       redisStringClient.deleteIfMatches(key(sessionId), hash(rotatedToken));
-      throw new BusinessException(ErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     return rotatedToken;
@@ -208,7 +208,7 @@ public class RefreshTokenService {
    */
   void revokeBeforeSessionDeletion(long sessionId, LocalDateTime expiresAt) {
     if (sessionId <= 0 || expiresAt == null) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
     }
 
     Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));

@@ -6,7 +6,7 @@ import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.common.response.ErrorResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -108,7 +108,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
       objectWriter.writeValue(
           response.getOutputStream(),
-          ErrorResponse.from(ErrorCode.INTERNAL_SERVER_ERROR, request.getRequestId()));
+          ErrorResponse.from(CommonErrorCode.INTERNAL_SERVER_ERROR, request.getRequestId()));
       return;
     }
 
@@ -136,6 +136,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     objectWriter.writeValue(
         response.getOutputStream(),
-        ErrorResponse.from(ErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
+        ErrorResponse.from(CommonErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
   }
 }

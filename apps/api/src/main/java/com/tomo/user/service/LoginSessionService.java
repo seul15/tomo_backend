@@ -2,7 +2,7 @@ package com.tomo.user.service;
 
 import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.repository.LoginSessionRepository;
@@ -82,13 +82,13 @@ public class LoginSessionService implements AccessSessionValidator {
   @Transactional(readOnly = true)
   public LoginSession requireOwnedSession(String userId, long sessionId) {
     if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
     }
 
     return loginSessionRepository
         .findById(sessionId)
         .filter(session -> userId.equals(session.getUserId()))
-        .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+        .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED));
   }
 
   /**

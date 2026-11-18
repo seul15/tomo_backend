@@ -10,7 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.LoginSession;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,13 +78,14 @@ class LoginSessionFacadeTest {
   void rejectsUnauthorizedLogout() {
     // given
     when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID))
-        .thenThrow(new BusinessException(ErrorCode.UNAUTHORIZED));
+        .thenThrow(new BusinessException(CommonErrorCode.UNAUTHORIZED));
 
     // then
     assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
+            exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED));
 
     verifyNoInteractions(refreshTokenService);
   }
@@ -96,7 +97,8 @@ class LoginSessionFacadeTest {
     assertThatThrownBy(() -> facade.logout("", SESSION_ID))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+            exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_REQUEST));
 
     verifyNoInteractions(loginSessionService, refreshTokenService);
   }

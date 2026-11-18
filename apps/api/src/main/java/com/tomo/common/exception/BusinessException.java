@@ -12,7 +12,7 @@ public class BusinessException extends RuntimeException {
    * @param errorCode 발생한 오류 코드
    */
   public BusinessException(ErrorCode errorCode) {
-    super(errorCode.getMessage());
+    super(errorCode.message());
     this.errorCode = errorCode;
   }
 

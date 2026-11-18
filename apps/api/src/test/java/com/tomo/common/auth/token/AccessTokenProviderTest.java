@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.ErrorCode;
+import com.tomo.common.exception.CommonErrorCode;
 import io.jsonwebtoken.Jwts;
 import java.time.Clock;
 import java.time.Instant;
@@ -54,7 +54,7 @@ class AccessTokenProviderTest {
     assertThatThrownBy(() -> other.verify(token))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ACCESS_TOKEN));
+            e -> assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
   }
 
   @Test
@@ -69,7 +69,7 @@ class AccessTokenProviderTest {
     assertThatThrownBy(() -> later.verify(token))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ACCESS_TOKEN));
+            e -> assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
   }
 
   @Test
@@ -90,7 +90,7 @@ class AccessTokenProviderTest {
     assertThatThrownBy(() -> codec.verify(otherType))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ACCESS_TOKEN));
+            e -> assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
   }
 
   @Test
@@ -110,7 +110,7 @@ class AccessTokenProviderTest {
     assertThatThrownBy(() -> codec.verify(missingSid))
         .isInstanceOfSatisfying(
             BusinessException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_ACCESS_TOKEN));
+            e -> assertThat(e.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
   }
 
   @Test
