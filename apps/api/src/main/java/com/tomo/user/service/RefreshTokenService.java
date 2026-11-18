@@ -163,49 +163,6 @@ public class RefreshTokenService {
   }
 
   /**
-   * 검증된 사용자 세션에 Refresh Token을 재발급한다.
-   *
-   * <p>기존 토큰은 교체되어 더 이상 사용할 수 없다.
-   *
-   * @param userId 검증된 사용자 ID
-   * @param sessionId 로그인 세션 ID
-   * @return 재발급된 Refresh Token
-   * @throws BusinessException 사용자나 세션이 유효하지 않은 경우
-   */
-  public String reissue(String userId, long sessionId) {
-    if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
-    }
-
-    LoginSession session =
-        loginSessionRepository
-            .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
-
-    if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
-    }
-
-    Duration ttl =
-        Duration.between(clock.instant(), session.getExpiresAt().toInstant(ZoneOffset.UTC));
-
-    if (ttl.toMillis() <= 0 || !loginSessionService.isValidAccessSession(userId, sessionId)) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
-    }
-
-    String token = newToken(sessionId);
-
-    boolean replaced =
-        redisStringClient.replaceUnlessRevoked(key(sessionId), REVOKED_VALUE, hash(token), ttl);
-
-    if (!replaced) {
-      throw new BusinessException(ErrorCode.UNAUTHORIZED);
-    }
-
-    return token;
-  }
-
-  /**
    * Refresh Token 및 연결된 로그인 세션의 유효성을 확인한다.
    *
    * <p>검증 과정에서 토큰을 변경하거나 Redis TTL을 연장하지 않는다.

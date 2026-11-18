@@ -314,40 +314,4 @@ class RefreshTokenServiceTest {
     // then
     verify(redisStringClient).set(KEY, "__REVOKED__", Duration.ofMinutes(30));
   }
-
-  @Test
-  @DisplayName("유효한 로그인 세션은 Refresh Token을 재발급할 수 있다")
-  void reissuesRefreshToken() {
-    // given
-    prepareValidSession();
-
-    when(redisStringClient.replaceUnlessRevoked(
-            eq(KEY), eq("__REVOKED__"), anyString(), eq(Duration.ofMinutes(30))))
-        .thenReturn(true);
-
-    // when
-    String token = service.reissue(USER_ID, SESSION_ID);
-
-    // then
-    assertThat(token).startsWith("10.");
-    verify(redisStringClient)
-        .replaceUnlessRevoked(eq(KEY), eq("__REVOKED__"), anyString(), eq(Duration.ofMinutes(30)));
-  }
-
-  @Test
-  @DisplayName("폐기된 세션에는 Refresh Token을 재발급하지 않는다")
-  void rejectsReissueAfterRevocation() {
-    // given
-    prepareValidSession();
-
-    when(redisStringClient.replaceUnlessRevoked(
-            eq(KEY), eq("__REVOKED__"), anyString(), eq(Duration.ofMinutes(30))))
-        .thenReturn(false);
-
-    // then
-    assertThatThrownBy(() -> service.reissue(USER_ID, SESSION_ID))
-        .isInstanceOfSatisfying(
-            BusinessException.class,
-            exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
-  }
 }
