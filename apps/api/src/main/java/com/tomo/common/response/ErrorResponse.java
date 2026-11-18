@@ -38,5 +38,16 @@ public record ErrorResponse(
    * @param code 오류 코드
    * @param message 오류 메시지
    */
-  public record Error(String code, String message) {}
+  @Schema(description = "오류 코드 및 메시지")
+  public record Error(
+      @Schema(
+              description = "오류 코드",
+              example = "INVALID_ACCESS_TOKEN",
+              requiredMode = Schema.RequiredMode.REQUIRED)
+          String code,
+      @Schema(
+              description = "오류 메시지",
+              example = "accessToken이 없거나 형식이 올바르지 않거나 만료·폐기되었습니다.",
+              requiredMode = Schema.RequiredMode.REQUIRED)
+          String message) {}
 }
