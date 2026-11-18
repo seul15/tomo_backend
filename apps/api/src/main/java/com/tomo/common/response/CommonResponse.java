@@ -1,5 +1,7 @@
 package com.tomo.common.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * API 공통 성공 응답.
  *
@@ -8,7 +10,13 @@ package com.tomo.common.response;
  * @param data 응답 데이터
  * @param meta 요청 메타데이터
  */
-public record CommonResponse<T>(boolean success, T data, ResponseMeta meta) {
+@Schema(description = "공통 성공 응답")
+public record CommonResponse<T>(
+    @Schema(description = "요청 성공 여부", example = "true", requiredMode = Schema.RequiredMode.REQUIRED)
+        boolean success,
+    @Schema(description = "API 응답 데이터", requiredMode = Schema.RequiredMode.REQUIRED) T data,
+    @Schema(description = "요청 메타데이터", requiredMode = Schema.RequiredMode.REQUIRED)
+        ResponseMeta meta) {
   /**
    * 성공 응답을 생성한다.
    *

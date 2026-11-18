@@ -1,6 +1,7 @@
 package com.tomo.common.response;
 
 import com.tomo.common.exception.ErrorCode;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * API 공통 오류 응답.
@@ -9,7 +10,16 @@ import com.tomo.common.exception.ErrorCode;
  * @param error 오류 정보
  * @param meta 요청 메타데이터
  */
-public record ErrorResponse(boolean success, Error error, ResponseMeta meta) {
+@Schema(description = "공통 오류 응답")
+public record ErrorResponse(
+    @Schema(
+            description = "요청 성공 여부",
+            example = "false",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+        boolean success,
+    @Schema(description = "오류 정보", requiredMode = Schema.RequiredMode.REQUIRED) Error error,
+    @Schema(description = "요청 메타데이터", requiredMode = Schema.RequiredMode.REQUIRED)
+        ResponseMeta meta) {
   /**
    * 오류 응답을 생성한다.
    *

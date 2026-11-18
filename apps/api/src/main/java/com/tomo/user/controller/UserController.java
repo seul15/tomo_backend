@@ -5,6 +5,7 @@ import com.tomo.user.controller.docs.UserApiDocs;
 import com.tomo.user.dto.response.UserProfileResponse;
 import com.tomo.user.service.UserProfileQueryService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,7 +35,7 @@ public class UserController implements UserApiDocs {
    * @return 프로필 조회 응답
    */
   @Override
-  @GetMapping("/me")
+  @GetMapping(value = "/me", produces = MediaType.APPLICATION_JSON_VALUE)
   public CommonResponse<UserProfileResponse> getMyProfile(
       @AuthenticationPrincipal String userId, HttpServletRequest request) {
 
