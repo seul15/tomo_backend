@@ -73,6 +73,11 @@ scalar:
   url: /v3/api-docs
 
 tomo:
+  auth:
+    jwt-secret-base64: ${JWT_SECRET_BASE64}
+    access-token-expiration: 1h
+    refresh-token-expiration: 7d
+    signup-token-expiration: 10m
   redis:
     redisson:
       enabled: true
