@@ -39,7 +39,7 @@ public class SecurityConfig {
 
       objectMapper.writeValue(
           response.getOutputStream(),
-          ErrorResponse.from(CommonErrorCode.UNAUTHORIZED, request.getRequestId()));
+          ErrorResponse.from(CommonErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
     };
   }
 

@@ -110,7 +110,7 @@ class UserControllerTest {
     // then
     result
         .andExpect(status().isUnauthorized())
-        .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
 
     verifyNoInteractions(userProfileQueryService);
   }
