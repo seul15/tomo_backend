@@ -62,6 +62,8 @@ scalar:
   url: /v3/api-docs
 
 tomo:
+  auth:
+    jwt-secret-base64: ${JWT_SECRET_BASE64}
   redis:
     redisson:
       enabled: true
