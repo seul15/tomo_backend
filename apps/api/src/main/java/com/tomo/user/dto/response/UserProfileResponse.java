@@ -14,10 +14,25 @@ import java.util.Locale;
  */
 @Schema(description = "내 계정 및 프로필 조회 응답")
 public record UserProfileResponse(
-    @Schema(description = "사용자 닉네임", example = "집중토모") String nickname,
-    @Schema(description = "프로필 이미지 URL", nullable = true) String profileImageUrl,
-    @Schema(description = "연결된 이메일", nullable = true) String email,
-    @Schema(description = "소셜 인증 제공자", example = "google") String provider) {
+    @Schema(description = "사용자 닉네임", example = "집중토모", requiredMode = Schema.RequiredMode.REQUIRED)
+        String nickname,
+    @Schema(
+            description = "프로필 이미지 URL",
+            example = "https://cdn.example.com/profile/user01.png",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+        String profileImageUrl,
+    @Schema(
+            description = "연결된 이메일. 제공되지 않은 경우 null",
+            example = "test@google.com",
+            nullable = true,
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+        String email,
+    @Schema(
+            description = "소셜 인증 제공자 (google 또는 kakao)",
+            allowableValues = {"google", "kakao"},
+            example = "google",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+        String provider) {
 
   /**
    * 서비스 결과를 HTTP 응답으로 변환한다.

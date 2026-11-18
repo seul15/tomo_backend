@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.MediaType;
 
 /** 회원 계정 및 프로필 API 명세. */
 @Tag(name = "User", description = "회원 계정 및 프로필 API")
@@ -27,26 +28,40 @@ public interface UserApiDocs {
    */
   @Operation(
       summary = "내 계정·프로필 조회",
-      description = "인증된 사용자 본인의 계정 및 프로필 정보를 조회합니다.",
+      description =
+          "Access Token으로 인증된 사용자 본인의 계정 및 프로필 정보를 조회합니다. "
+              + "사용자 ID는 인증 정보에서 확인하며, 별도의 Path·Query·Body 입력은 필요하지 않습니다.",
       security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
   @ApiResponses({
-    @ApiResponse(responseCode = "200", description = "조회 성공"),
+    @ApiResponse(responseCode = "200", description = "계정 및 프로필 조회 성공"),
     @ApiResponse(
         responseCode = "401",
-        description = "INVALID_ACCESS_TOKEN",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "INVALID_ACCESS_TOKEN - Access Token이 없거나 형식이 올바르지 않거나 만료·폐기된 경우",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class))),
     @ApiResponse(
         responseCode = "403",
-        description = "PROFILE_VIEW_FORBIDDEN",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "PROFILE_VIEW_FORBIDDEN - 해당 계정의 프로필을 조회할 권한이 없는 경우",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class))),
     @ApiResponse(
         responseCode = "404",
-        description = "RESOURCE_NOT_FOUND",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "RESOURCE_NOT_FOUND - 조회할 리소스가 존재하지 않는 경우",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class))),
     @ApiResponse(
         responseCode = "500",
-        description = "INTERNAL_SERVER_ERROR",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+        description = "INTERNAL_SERVER_ERROR - 서버 처리 중 오류가 발생한 경우",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class)))
   })
   CommonResponse<UserProfileResponse> getMyProfile(
       @Parameter(hidden = true) String userId,
