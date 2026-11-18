@@ -17,8 +17,9 @@ public record UserProfileResponse(
     @Schema(description = "사용자 닉네임", example = "집중토모", requiredMode = Schema.RequiredMode.REQUIRED)
         String nickname,
     @Schema(
-            description = "프로필 이미지 URL",
+            description = "프로필 이미지 URL. 미등록 시 null",
             example = "https://cdn.example.com/profile/user01.png",
+            nullable = true,
             requiredMode = Schema.RequiredMode.REQUIRED)
         String profileImageUrl,
     @Schema(

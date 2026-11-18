@@ -72,6 +72,7 @@ class UserProfileQueryServiceTest {
     when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
     when(user.getAccountStatus()).thenReturn(AccountStatus.ACTIVE);
     when(user.getNickname()).thenReturn("집중토모");
+    when(user.getProfileImage()).thenReturn(IMAGE_URL);
     when(socialIdentityRepository.findByUserId(USER_ID)).thenReturn(Optional.of(socialIdentity));
     when(socialIdentity.getProvider()).thenReturn(SocialProvider.KAKAO);
 
@@ -80,6 +81,7 @@ class UserProfileQueryServiceTest {
 
     // then
     assertThat(result.nickname()).isEqualTo("집중토모");
+    assertThat(result.profileImageUrl()).isEqualTo(IMAGE_URL);
     assertThat(result.email()).isNull();
     assertThat(result.provider()).isEqualTo(SocialProvider.KAKAO);
   }

@@ -102,7 +102,7 @@ class UserControllerTest {
   }
 
   @Test
-  @DisplayName("Access Token이 없으면 401 UNAUTHORIZED를 반환한다")
+  @DisplayName("Access Token이 없으면 401 INVALID_ACCESS_TOKEN을 반환한다")
   void rejectsMissingToken() throws Exception {
     // when
     ResultActions result = mockMvc.perform(get(PATH));
