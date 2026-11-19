@@ -3,7 +3,7 @@ package com.tomo.user.controller;
 import com.tomo.common.response.CommonResponse;
 import com.tomo.user.controller.docs.UserApiDocs;
 import com.tomo.user.dto.response.UserProfileResponse;
-import com.tomo.user.service.UserProfileQueryService;
+import com.tomo.user.service.UserProfileFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,15 +16,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/users")
 public class UserController implements UserApiDocs {
 
-  private final UserProfileQueryService userProfileQueryService;
+  private final UserProfileFacade userProfileFacade;
 
   /**
-   * 프로필 조회 서비스를 주입받는다.
+   * 프로필 조회 Facade를 주입받는다.
    *
-   * @param userProfileQueryService 프로필 조회 서비스
+   * @param userProfileFacade 프로필 조회 Facade
    */
-  public UserController(UserProfileQueryService userProfileQueryService) {
-    this.userProfileQueryService = userProfileQueryService;
+  public UserController(UserProfileFacade userProfileFacade) {
+    this.userProfileFacade = userProfileFacade;
   }
 
   /**
@@ -39,8 +39,7 @@ public class UserController implements UserApiDocs {
   public CommonResponse<UserProfileResponse> getMyProfile(
       @AuthenticationPrincipal String userId, HttpServletRequest request) {
 
-    UserProfileResponse response =
-        UserProfileResponse.from(userProfileQueryService.getMyProfile(userId));
+    UserProfileResponse response = UserProfileResponse.from(userProfileFacade.getMyProfile(userId));
 
     return CommonResponse.success(response, request.getRequestId());
   }

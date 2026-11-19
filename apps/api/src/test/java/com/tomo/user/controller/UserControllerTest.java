@@ -15,7 +15,7 @@ import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.SocialProvider;
 import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.service.LoginSessionService;
-import com.tomo.user.service.UserProfileQueryService;
+import com.tomo.user.service.UserProfileFacade;
 import com.tomo.user.service.model.UserProfileResult;
 import io.jsonwebtoken.Jwts;
 import java.time.Clock;
@@ -48,7 +48,7 @@ class UserControllerTest {
   @Autowired private AccessTokenProvider accessTokenProvider;
 
   @MockitoBean private LoginSessionService loginSessionService;
-  @MockitoBean private UserProfileQueryService userProfileQueryService;
+  @MockitoBean private UserProfileFacade userProfileFacade;
 
   @Test
   @DisplayName("유효한 JWT로 본인의 계정 및 프로필을 조회한다")
@@ -56,7 +56,7 @@ class UserControllerTest {
     // given
     String token = accessToken();
     when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true);
-    when(userProfileQueryService.getMyProfile(USER_ID))
+    when(userProfileFacade.getMyProfile(USER_ID))
         .thenReturn(
             new UserProfileResult("집중토모", IMAGE_URL, "test@google.com", SocialProvider.GOOGLE));
 
@@ -78,7 +78,7 @@ class UserControllerTest {
         .andExpect(jsonPath("$.data.accessToken").doesNotExist())
         .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
 
-    verify(userProfileQueryService).getMyProfile(USER_ID);
+    verify(userProfileFacade).getMyProfile(USER_ID);
   }
 
   @Test
@@ -87,7 +87,7 @@ class UserControllerTest {
     // given
     String token = accessToken();
     when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true);
-    when(userProfileQueryService.getMyProfile(USER_ID))
+    when(userProfileFacade.getMyProfile(USER_ID))
         .thenReturn(new UserProfileResult("집중토모", IMAGE_URL, null, SocialProvider.KAKAO));
 
     // when
@@ -112,7 +112,7 @@ class UserControllerTest {
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
 
-    verifyNoInteractions(userProfileQueryService);
+    verifyNoInteractions(userProfileFacade);
   }
 
   @Test
@@ -127,7 +127,7 @@ class UserControllerTest {
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
 
-    verifyNoInteractions(userProfileQueryService);
+    verifyNoInteractions(userProfileFacade);
   }
 
   @Test
@@ -146,7 +146,7 @@ class UserControllerTest {
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
 
-    verifyNoInteractions(userProfileQueryService);
+    verifyNoInteractions(userProfileFacade);
   }
 
   @Test
@@ -155,7 +155,7 @@ class UserControllerTest {
     // given
     String token = accessToken();
     when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true);
-    when(userProfileQueryService.getMyProfile(USER_ID))
+    when(userProfileFacade.getMyProfile(USER_ID))
         .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
 
     // when
@@ -174,7 +174,7 @@ class UserControllerTest {
     // given
     String token = accessToken();
     when(loginSessionService.isValidAccessSession(USER_ID, SESSION_ID)).thenReturn(true);
-    when(userProfileQueryService.getMyProfile(USER_ID))
+    when(userProfileFacade.getMyProfile(USER_ID))
         .thenThrow(new BusinessException(UserErrorCode.PROFILE_VIEW_FORBIDDEN));
 
     // when
