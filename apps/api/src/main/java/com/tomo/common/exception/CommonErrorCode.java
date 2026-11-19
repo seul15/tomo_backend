@@ -19,16 +19,31 @@ public enum CommonErrorCode implements ErrorCode {
     this.message = message;
   }
 
+  /**
+   * 오류 코드 이름을 반환한다.
+   *
+   * @return 오류 코드
+   */
   @Override
   public String code() {
     return name();
   }
 
+  /**
+   * 오류 메시지를 반환한다.
+   *
+   * @return 오류 메시지
+   */
   @Override
   public String message() {
     return message;
   }
 
+  /**
+   * HTTP 상태 코드를 반환한다.
+   *
+   * @return HTTP 상태 코드
+   */
   @Override
   public int httpStatus() {
     return httpStatus;
