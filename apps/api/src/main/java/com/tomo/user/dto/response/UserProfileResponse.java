@@ -25,7 +25,7 @@ public record UserProfileResponse(
             description = "연결된 이메일. 제공되지 않은 경우 null",
             example = "test@google.com",
             nullable = true,
-            requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+            requiredMode = Schema.RequiredMode.REQUIRED)
         String email,
     @Schema(
             description = "소셜 인증 제공자 (GOOGLE 또는 KAKAO)",
