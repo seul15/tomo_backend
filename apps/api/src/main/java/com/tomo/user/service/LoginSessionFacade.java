@@ -3,11 +3,15 @@ package com.tomo.user.service;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.LoginSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /** 로그인 세션과 Refresh Token의 폐기를 조정한다. */
 @Service
 public class LoginSessionFacade {
+  private static final Logger LOG = LoggerFactory.getLogger(LoginSessionFacade.class);
+
   private final LoginSessionService loginSessionService;
   private final RefreshTokenService refreshTokenService;
 
@@ -39,6 +43,13 @@ public class LoginSessionFacade {
 
     refreshTokenService.revokeBeforeSessionDeletion(sessionId, session.getExpiresAt());
 
-    loginSessionService.invalidateOwnedSession(userId, sessionId);
+    boolean deleted = loginSessionService.invalidateOwnedSession(userId, sessionId);
+
+    if (!deleted) {
+      LOG.warn("로그아웃 중 DB 세션 삭제 대상 없음. sessionId={}", sessionId);
+      return;
+    }
+
+    LOG.info("로그아웃 완료. sessionId={}", sessionId);
   }
 }

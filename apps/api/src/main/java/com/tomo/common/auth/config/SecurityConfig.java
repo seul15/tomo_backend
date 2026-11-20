@@ -9,6 +9,8 @@ import com.tomo.common.response.ErrorResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,6 +26,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 /** API 문서 공개 경로와 Access Token 인증 정책을 설정한다. */
 @Configuration
 public class SecurityConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
+
   /**
    * 인증 정보가 없는 요청에 공통 오류 응답을 반환한다.
    *
@@ -33,6 +37,8 @@ public class SecurityConfig {
   @Bean
   public AuthenticationEntryPoint authenticationEntryPoint(ObjectMapper objectMapper) {
     return (request, response, exception) -> {
+      LOG.debug("인증되지 않은 요청 거부");
+
       response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -52,6 +58,8 @@ public class SecurityConfig {
   @Bean
   public AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
     return (request, response, exception) -> {
+      LOG.debug("접근 권한 없는 요청 거부");
+
       response.setStatus(HttpServletResponse.SC_FORBIDDEN);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       response.setCharacterEncoding(StandardCharsets.UTF_8.name());

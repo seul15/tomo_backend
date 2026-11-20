@@ -223,16 +223,25 @@ class SecurityConfigTest {
 
     // when
     ResultActions result =
-        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token));
+        mockMvc.perform(
+            get("/api/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .with(
+                    request -> {
+                      MockHttpServletRequest identifiedRequest = spy(request);
+                      when(identifiedRequest.getRequestId()).thenReturn("session-failure");
+                      return identifiedRequest;
+                    }));
 
     // then
     result
         .andExpect(status().isInternalServerError())
-        .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"));
-    String requestId = result.andReturn().getRequest().getRequestId();
-    result.andExpect(jsonPath("$.meta.requestId").value(requestId));
-    assertThat(output.getOut()).contains("[requestId=" + requestId + "] 로그인 세션 검증 실패");
-    assertThat(org.slf4j.MDC.get("requestId")).isNull();
+        .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
+        .andExpect(jsonPath("$.meta.requestId").value("session-failure"));
+
+    assertThat(output.getOut()).contains("[requestId=session-failure] 로그인 세션 검증 중 서버 오류");
+
+    assertThat(MDC.get("requestId")).isNull();
   }
 
   @Test

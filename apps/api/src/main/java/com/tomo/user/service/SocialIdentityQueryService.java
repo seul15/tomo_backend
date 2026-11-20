@@ -5,12 +5,15 @@ import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.SocialIdentity;
 import com.tomo.user.repository.SocialIdentityRepository;
 import com.tomo.user.service.model.SocialIdentityDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 소셜 계정 연결 정보를 조회한다. */
 @Service
 public class SocialIdentityQueryService {
+  private static final Logger LOG = LoggerFactory.getLogger(SocialIdentityQueryService.class);
 
   private final SocialIdentityRepository socialIdentityRepository;
 
@@ -35,7 +38,11 @@ public class SocialIdentityQueryService {
     SocialIdentity socialIdentity =
         socialIdentityRepository
             .findByUserId(userId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+            .orElseThrow(
+                () -> {
+                  LOG.warn("프로필 조회 중 소셜 계정 연결 정보가 존재하지 않음");
+                  return new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+                });
 
     return new SocialIdentityDetails(socialIdentity.getEmail(), socialIdentity.getProvider());
   }

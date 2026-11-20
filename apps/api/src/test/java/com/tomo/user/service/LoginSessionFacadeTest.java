@@ -44,6 +44,7 @@ class LoginSessionFacadeTest {
     // given
     when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID)).thenReturn(session);
     when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
 
     // when
     facade.logout(USER_ID, SESSION_ID);

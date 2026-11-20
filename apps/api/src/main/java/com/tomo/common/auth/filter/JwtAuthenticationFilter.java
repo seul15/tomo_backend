@@ -79,7 +79,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     Matcher matcher = BEARER_TOKEN_PATTERN.matcher(authorization);
 
     if (!matcher.matches()) {
-      reject(request, response);
+      reject(request, response, "INVALID_BEARER_FORMAT");
       return;
     }
 
@@ -88,7 +88,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     try {
       claims = accessTokenProvider.verify(matcher.group(1));
     } catch (BusinessException exception) {
-      reject(request, response);
+      reject(request, response, "TOKEN_VERIFICATION_FAILED");
       return;
     }
 
@@ -100,7 +100,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     } catch (RuntimeException exception) {
       SecurityContextHolder.clearContext();
 
-      LOG.error("로그인 세션 검증 실패. requestId={}", request.getRequestId(), exception);
+      LOG.error("로그인 세션 검증 중 서버 오류", exception);
 
       response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -113,7 +113,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     if (!validSession) {
-      reject(request, response);
+      reject(request, response, "INVALID_LOGIN_SESSION");
       return;
     }
 
@@ -127,8 +127,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     filterChain.doFilter(request, response);
   }
 
-  private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
+  private void reject(HttpServletRequest request, HttpServletResponse response, String reason)
+      throws IOException {
+
     SecurityContextHolder.clearContext();
+
+    LOG.debug("Access Token 인증 거부. reason={}", reason);
 
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);

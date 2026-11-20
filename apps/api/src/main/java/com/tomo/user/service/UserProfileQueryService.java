@@ -7,12 +7,15 @@ import com.tomo.user.entity.User;
 import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.repository.UserRepository;
 import com.tomo.user.service.model.UserProfileDetails;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 사용자의 계정 및 프로필 정보를 조회한다. */
 @Service
 public class UserProfileQueryService {
+  private static final Logger LOG = LoggerFactory.getLogger(UserProfileQueryService.class);
 
   private final UserRepository userRepository;
 
@@ -35,15 +38,21 @@ public class UserProfileQueryService {
   @Transactional(readOnly = true)
   public UserProfileDetails getActiveUserProfile(String userId) {
     if (userId == null || userId.isBlank()) {
+      LOG.debug("프로필 조회 거부. 인증 사용자 ID 없음");
       throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     User user =
         userRepository
             .findById(userId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+            .orElseThrow(
+                () -> {
+                  LOG.warn("프로필 조회 중 인증 사용자 정보가 존재하지 않음");
+                  return new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+                });
 
     if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+      LOG.debug("프로필 조회 거부. accountStatus={}", user.getAccountStatus());
       throw new BusinessException(UserErrorCode.PROFILE_VIEW_FORBIDDEN);
     }
 

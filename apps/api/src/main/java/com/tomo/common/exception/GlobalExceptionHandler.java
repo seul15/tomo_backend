@@ -32,6 +32,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     ErrorCode errorCode = exception.getErrorCode();
 
+    if (errorCode.httpStatus() >= 500) {
+      LOG.error("업무 처리 중 서버 오류. errorCode={}", errorCode.code(), exception);
+    }
+
     return ResponseEntity.status(errorCode.httpStatus())
         .body(ErrorResponse.from(errorCode, request.getRequestId()));
   }
@@ -75,7 +79,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     String requestId = ((ServletWebRequest) request).getRequest().getRequestId();
 
     if (statusCode.is5xxServerError()) {
-      LOG.error("서버 오류 발생. requestId={}", requestId, exception);
+      LOG.error("MVC 요청 처리 중 서버 오류. status={}", statusCode.value(), exception);
     }
 
     return super.handleExceptionInternal(
@@ -96,7 +100,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ErrorCode errorCode = CommonErrorCode.INTERNAL_SERVER_ERROR;
     String requestId = request.getRequestId();
 
-    LOG.error("서버 오류 발생. requestId={}", requestId, exception);
+    LOG.error("예상하지 못한 서버 오류 발생", exception);
 
     return ResponseEntity.status(errorCode.httpStatus())
         .body(ErrorResponse.from(errorCode, requestId));

@@ -21,11 +21,14 @@ import java.util.HexFormat;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /** 로그인 세션에 연결된 Refresh Token의 발급, 검증, 폐기를 담당한다. */
 @Service
 public class RefreshTokenService {
+  private static final Logger LOG = LoggerFactory.getLogger(RefreshTokenService.class);
   private static final String KEY_PREFIX = "auth:refresh:session:";
   private static final String REVOKED_VALUE = "__REVOKED__";
   private static final int RANDOM_BYTES = 32;
@@ -102,13 +105,19 @@ public class RefreshTokenService {
     boolean stored = redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl);
 
     if (!stored) {
+      LOG.debug("Refresh Token 중복 발급 거부. sessionId={}", sessionId);
       throw new BusinessException(CommonErrorCode.RESOURCE_CONFLICT);
     }
 
     if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      redisStringClient.deleteIfMatches(key(sessionId), hash(token));
+      boolean removed = redisStringClient.deleteIfMatches(key(sessionId), hash(token));
+
+      LOG.warn("Refresh Token 발급 후 세션 무효화. sessionId={}, tokenRemoved={}", sessionId, removed);
+
       throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
     }
+
+    LOG.info("Refresh Token 발급 완료. sessionId={}", sessionId);
 
     return token;
   }
@@ -151,13 +160,19 @@ public class RefreshTokenService {
             key(sessionId), hash(currentToken), hash(rotatedToken), ttl);
 
     if (!replaced) {
+      LOG.debug("Refresh Token 교체 거부. sessionId={}", sessionId);
       throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      redisStringClient.deleteIfMatches(key(sessionId), hash(rotatedToken));
+      boolean removed = redisStringClient.deleteIfMatches(key(sessionId), hash(rotatedToken));
+
+      LOG.warn("Refresh Token 교체 후 세션 무효화. sessionId={}, tokenRemoved={}", sessionId, removed);
+
       throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
+
+    LOG.info("Refresh Token 교체 완료. sessionId={}", sessionId);
 
     return rotatedToken;
   }
@@ -218,6 +233,8 @@ public class RefreshTokenService {
     }
 
     redisStringClient.set(key(sessionId), REVOKED_VALUE, ttl);
+
+    LOG.info("Refresh Token 폐기 완료. sessionId={}", sessionId);
   }
 
   private String newToken(long sessionId) {
