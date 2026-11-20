@@ -118,6 +118,46 @@ Grafana Cloud Explore에서 해당 스택의 Logs 데이터소스를 선택하�
 
 현재 `level`은 journal 우선순위에서 가져온 값으로, 메시지 본문의 Spring 로그 레벨과 항상 같지는 않다. 애플리케이션 ERROR 조회는 본문 필터도 함께 사용한다.
 
+## requestId 기반 요청 로그 추적
+
+관련 이슈: #46. 응답의 `meta.requestId`와 로그는 서블릿 컨테이너의 `request.getRequestId()`를 사용한다. 별도 ID 생성이나 클라이언트 헤더 수신 없이 기존 응답 계약을 유지한다.
+
+`RequestLoggingConfig`는 현재 Security 필터 순서보다 한 단계 앞에 `RequestIdFilter`를 등록한다. 필터는 요청 처리 동안 MDC의 `requestId`를 설정하고, 정상 반환·인증 거부·예외 발생 시 모두 `finally`에서 정리한다. 이미 있던 MDC 값은 복원하며 다른 MDC 항목은 유지한다. REQUEST·ASYNC·ERROR 디스패치에 적용하고, 중첩 ERROR 디스패치는 현재 스레드의 컨텍스트를 유지한다.
+
+각 기능에서는 기존 SLF4J Logger로 메시지만 기록한다.
+
+```java
+private static final Logger LOG = LoggerFactory.getLogger(MyService.class);
+
+LOG.debug("처리 단계 확인");
+LOG.info("작업 완료");
+LOG.warn("외부 서비스 재시도 한도 도달");
+LOG.error("작업 처리 실패", exception);
+```
+
+Logback은 local·dev 모두 `[requestId=...]`를 메시지 앞에 자동 출력한다. 시작 로그·스케줄러 등 요청 컨텍스트가 없는 로그는 `[requestId=none]`으로 출력한다. 기존에 메시지에 직접 쓴 requestId는 계속 동작하지만 중복 표시될 수 있다.
+
+| 레벨 | 사용 기준 |
+| --- | --- |
+| DEBUG | 개발 중 필요한 상세 처리 흐름 |
+| INFO | 주요 정상 업무 이벤트 |
+| WARN | 재시도 소진 등 확인이 필요한 이상 상황 |
+| ERROR | 예상하지 못한 서버 처리 실패. 예외 객체를 함께 전달 |
+
+local은 `com.tomo` DEBUG, 그 외 프로필은 INFO 이상을 출력한다. 토큰 만료·잘못된 입력처럼 예상 가능한 실패를 일괄 ERROR로 기록하지 않는다. 예외는 최종 처리 계층에서 한 번 기록하며, 로그를 남기고 다시 던져 같은 예외를 중복 기록하지 않는다. 요청 헤더·본문 전체, 토큰·비밀번호·쿠키·개인정보는 기록하지 않는다. 기존 메시지·예외 마스킹은 보조 수단이다.
+
+현재 애플리케이션에는 `@Async`, MVC `Callable`·`DeferredResult` 사용이 없다. ASYNC 재디스패치 스레드에는 필터가 MDC를 다시 설정하지만, 별도 작업 스레드 실행까지 자동 전파하지는 않는다. 이런 기능을 도입할 때는 해당 실행기의 TaskDecorator 등으로 제출 시 컨텍스트 복사와 실행 후 복원·정리를 추가해야 한다.
+
+Grafana Explore에서 응답의 ID를 복사하여 기존 Logs 데이터소스와 요청 시간 범위에서 검색한다.
+
+```logql
+{job="tomo-service", environment="dev"} |= "[requestId=실제-응답-ID]"
+```
+
+requestId는 요청마다 달라지므로 Loki 인덱스 라벨로 추가하지 않고 본문 필터로 조회한다. 기존 stdout → journal → Alloy → Loki 경로를 그대로 사용한다. 이 필터는 요청마다 별도 접속 로그를 생성하지 않으므로 해당 요청에서 기록한 로그가 없으면 검색 결과도 없다. 401·403 응답 자체가 WARN·ERROR 로그 생성을 의미하지 않는다.
+
+배포 후에는 테스트 요청으로 응답 ID와 journal의 `[requestId=...]` 일치를 확인하고, 같은 ID를 Grafana에서 검색한다. 정상·401·403·500 경로와 후속 요청의 ID가 섞이지 않는지 확인한다. 장애를 만들기 위해 실제 DB를 중단하거나 실제 비밀값을 사용하지 않는다. 로컬 테스트 통과와 개발 서버 배포 후 검색 검증은 별도로 기록한다.
+
 ## 장애 대응과 복구
 
 | 증상 | 확인·대응 |

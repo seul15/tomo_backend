@@ -12,6 +12,7 @@ import ch.qos.logback.core.ConsoleAppender;
 import ch.qos.logback.core.status.Status;
 import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -52,6 +53,7 @@ class LogbackConfigurationTest {
               "password=exception-secret", new IllegalArgumentException("apiKey=cause-secret"));
       exception.addSuppressed(new IllegalStateException("token=suppressed-secret"));
       event.setThrowableProxy(new ThrowableProxy(exception));
+      event.setMDCPropertyMap(Map.of("requestId", "request-log-test"));
       ConsoleAppender<?> appender =
           (ConsoleAppender<?>) context.getLogger(Logger.ROOT_LOGGER_NAME).getAppender("CONSOLE");
 
@@ -67,6 +69,7 @@ class LogbackConfigurationTest {
       assertThat(context.getStatusManager().getCopyOfStatusList())
           .noneMatch(status -> status.getLevel() == Status.ERROR);
       assertThat(output)
+          .contains("[requestId=request-log-test]")
           .contains("Request 42 failed password=****** Bearer ******")
           .contains("IllegalStateException: password=******")
           .contains("IllegalArgumentException: apiKey=******")
@@ -83,6 +86,7 @@ class LogbackConfigurationTest {
               "Request {} failed password=message-secret Bearer abc/def+ghi~jkl==",
               null,
               new Object[] {42});
+      normalEvent.setMDCPropertyMap(Map.of());
       @SuppressWarnings("unchecked")
       String withoutException =
           new String(
@@ -91,6 +95,7 @@ class LogbackConfigurationTest {
                   .encode(normalEvent),
               StandardCharsets.UTF_8);
       assertThat(withoutException)
+          .contains("[requestId=none]")
           .contains("Request 42 failed password=****** Bearer ******")
           .endsWith(System.lineSeparator())
           .doesNotContain("%n", "%nopex");

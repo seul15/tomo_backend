@@ -1,26 +1,40 @@
 package com.tomo.common.auth.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tomo.common.auth.token.AccessTokenProvider;
+import com.tomo.common.logging.RequestIdFilter;
+import com.tomo.common.logging.RequestLoggingConfig;
+import com.tomo.common.response.CommonResponse;
 import com.tomo.user.service.LoginSessionService;
 import io.jsonwebtoken.Jwts;
+import jakarta.servlet.Filter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
@@ -32,13 +46,17 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.WebApplicationContext;
 
 @WebMvcTest(SecurityConfigTest.TestController.class)
-@Import({SecurityConfig.class, SecurityConfigTest.TestController.class})
+@Import({SecurityConfig.class, SecurityConfigTest.TestController.class, RequestLoggingConfig.class})
 @ActiveProfiles("test")
 class SecurityConfigTest {
   private static final Instant NOW = Instant.parse("2026-11-06T00:00:00Z");
@@ -46,8 +64,61 @@ class SecurityConfigTest {
   @Autowired private MockMvc mockMvc;
   @Autowired private AccessTokenProvider accessTokenProvider;
   @Autowired private AccessDeniedHandler accessDeniedHandler;
+  @Autowired private WebApplicationContext applicationContext;
+  @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private LoginSessionService loginSessionService;
+
+  @ParameterizedTest
+  @ValueSource(ints = {200, 401, 403})
+  @ExtendWith(OutputCaptureExtension.class)
+  @DisplayName("실제 정상·인증 실패·권한 거부 응답의 메타데이터와 로그 요청 ID가 일치한다")
+  void matchesResponseMetadataWithLogs(int expectedStatus, CapturedOutput output) throws Exception {
+    // given
+    Filter logObserver =
+        (request, response, chain) -> {
+          chain.doFilter(request, response);
+          LoggerFactory.getLogger(SecurityConfigTest.class)
+              .info("응답 경로 검증. status={}", ((HttpServletResponse) response).getStatus());
+        };
+    MockMvc requestIdMockMvc =
+        MockMvcBuilders.webAppContextSetup(applicationContext)
+            .addFilters(new RequestIdFilter(), logObserver)
+            .apply(springSecurity())
+            .build();
+    String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+    if (expectedStatus != 401) {
+      when(loginSessionService.isValidAccessSession("user-id", 10L)).thenReturn(true);
+    }
+    String path = expectedStatus == 403 ? "/api/denied" : "/api/request-id";
+    MockHttpServletRequestBuilder requestBuilder =
+        get(path)
+            .with(
+                request -> {
+                  MockHttpServletRequest identifiedRequest = spy(request);
+                  when(identifiedRequest.getRequestId()).thenReturn("response-" + expectedStatus);
+                  return identifiedRequest;
+                });
+    if (expectedStatus != 401) {
+      requestBuilder.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+    }
+
+    // when
+    MvcResult result = requestIdMockMvc.perform(requestBuilder).andReturn();
+
+    // then
+    assertThat(result.getResponse().getStatus()).isEqualTo(expectedStatus);
+    String responseRequestId =
+        objectMapper
+            .readTree(result.getResponse().getContentAsString())
+            .path("meta")
+            .path("requestId")
+            .asText();
+    assertThat(responseRequestId).isEqualTo("response-" + expectedStatus);
+    assertThat(output.getOut())
+        .contains("[requestId=" + responseRequestId + "] 응답 경로 검증. status=" + expectedStatus);
+    assertThat(MDC.get("requestId")).isNull();
+  }
 
   @ParameterizedTest
   @ValueSource(
@@ -141,8 +212,9 @@ class SecurityConfigTest {
   }
 
   @Test
+  @ExtendWith(OutputCaptureExtension.class)
   @DisplayName("로그인 세션 검증 중 서버 오류가 발생하면 공통 500 응답을 반환한다")
-  void handlesSessionValidationFailure() throws Exception {
+  void handlesSessionValidationFailure(CapturedOutput output) throws Exception {
     // given
     String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
 
@@ -157,6 +229,10 @@ class SecurityConfigTest {
     result
         .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"));
+    String requestId = result.andReturn().getRequest().getRequestId();
+    result.andExpect(jsonPath("$.meta.requestId").value(requestId));
+    assertThat(output.getOut()).contains("[requestId=" + requestId + "] 로그인 세션 검증 실패");
+    assertThat(org.slf4j.MDC.get("requestId")).isNull();
   }
 
   @Test
@@ -219,6 +295,11 @@ class SecurityConfigTest {
 
   @RestController
   static class TestController {
+
+    @GetMapping("/api/request-id")
+    CommonResponse<String> requestIdResponse(HttpServletRequest request) {
+      return CommonResponse.success("ok", request.getRequestId());
+    }
 
     @GetMapping({
       "/scalar",

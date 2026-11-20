@@ -8,7 +8,7 @@
     <springProfile name="local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %maskedMsg(%msg){}%n%maskedMsg(${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}){}%nopex</pattern>
+                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} [requestId=%X{requestId:-none}] %maskedMsg(%msg){}%n%maskedMsg(${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}){}%nopex</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
@@ -22,7 +22,7 @@
     <springProfile name="!local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} ${LOG_LEVEL_PATTERN:-%5p} [%15.15t] %-40.40logger{39} : %maskedMsg(%msg){}%n%maskedMsg(${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}){}%nopex</pattern>
+                <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} ${LOG_LEVEL_PATTERN:-%5p} [%15.15t] %-40.40logger{39} : [requestId=%X{requestId:-none}] %maskedMsg(%msg){}%n%maskedMsg(${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}){}%nopex</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
