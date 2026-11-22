@@ -91,26 +91,37 @@ public final class LoginSessionFacade {
                 RefreshTokenService.Rotation rotated =
                     refreshTokenService.rotate(
                         refreshToken, sessionId, refreshTokenTtl, activeUser);
+
                 if (rotated.status() == RefreshTokenService.RotationStatus.ROTATED) {
                   newlyRotated.set(rotated.newToken());
                   LocalDateTime nextExpiresAt =
                       LocalDateTime.ofInstant(now.plus(refreshTokenTtl), ZoneOffset.UTC);
                   loginSessionService.extendExpiration(sessionId, nextExpiresAt);
-                  return new RefreshTransactionResult(
-                      RefreshStatus.SUCCESS, userId, rotated.newToken());
+
+                  String accessToken =
+                      accessTokenProvider.issue(userId, sessionId, now.plus(accessTokenTtl));
+                  TokenRefreshResult tokens =
+                      new TokenRefreshResult(
+                          accessToken,
+                          rotated.newToken(),
+                          accessTokenTtl.toSeconds(),
+                          refreshTokenTtl.toSeconds());
+                  return new RefreshTransactionResult(RefreshStatus.SUCCESS, tokens);
                 }
+
                 if (rotated.status() == RefreshTokenService.RotationStatus.PREVIOUS_AFTER_GRACE) {
                   refreshTokenService.revokeBeforeSessionDeletion(
                       sessionId, session.getExpiresAt());
-                  if (!loginSessionService.invalidateOwnedSession(session.getUserId(), sessionId)) {
+                  if (!loginSessionService.invalidateOwnedSession(userId, sessionId)) {
                     throw new IllegalStateException("재사용 감지 후 로그인 세션 삭제에 실패했습니다.");
                   }
                 }
+
                 RefreshStatus statusResult =
                     rotated.status() == RefreshTokenService.RotationStatus.FORBIDDEN
                         ? RefreshStatus.FORBIDDEN
                         : RefreshStatus.INVALID;
-                return new RefreshTransactionResult(statusResult, null, null);
+                return new RefreshTransactionResult(statusResult, null);
               });
     } catch (RuntimeException exception) {
       if (newlyRotated.get() != null) {
@@ -118,25 +129,14 @@ public final class LoginSessionFacade {
       }
       throw exception;
     }
+
     if (transactionResult == null || transactionResult.status() != RefreshStatus.SUCCESS) {
       if (transactionResult != null && transactionResult.status() == RefreshStatus.FORBIDDEN) {
         throw new BusinessException(UserErrorCode.TOKEN_REFRESH_FORBIDDEN);
       }
       throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
-    try {
-      String access =
-          accessTokenProvider.issue(
-              transactionResult.userId(), sessionId, clock.instant().plus(accessTokenTtl));
-      return new TokenRefreshResult(
-          access,
-          transactionResult.refreshToken(),
-          accessTokenTtl.toSeconds(),
-          refreshTokenTtl.toSeconds());
-    } catch (RuntimeException exception) {
-      compensate(sessionId, transactionResult.refreshToken(), exception);
-      throw exception;
-    }
+    return transactionResult.tokens();
   }
 
   /**
@@ -177,6 +177,5 @@ public final class LoginSessionFacade {
     FORBIDDEN
   }
 
-  private record RefreshTransactionResult(
-      RefreshStatus status, String userId, String refreshToken) {}
+  private record RefreshTransactionResult(RefreshStatus status, TokenRefreshResult tokens) {}
 }

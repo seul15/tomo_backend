@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** 실행 환경에서 제공한 JWT 서명 키로 Access Token 코덱을 구성한다. */
+/** 실행 환경에서 제공한 JWT 서명 키로 Access 및 Signup Token 제공자를 구성한다. */
 @Configuration(proxyBeanMethods = false)
 public class JwtConfig {
   /**

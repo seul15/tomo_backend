@@ -189,6 +189,8 @@ class LoginSessionFacadeTest {
         .thenReturn(
             new RefreshTokenService.Rotation(
                 RefreshTokenService.RotationStatus.ROTATED, NEW_REFRESH));
+    when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL)))
+        .thenReturn("new-access-jwt");
     doThrow(new IllegalStateException("DB commit failed"))
         .when(transactionManager)
         .commit(any(TransactionStatus.class));
@@ -199,7 +201,7 @@ class LoginSessionFacadeTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("DB commit failed");
     verify(refreshTokenService).revokeIfCurrentMatches(SESSION_ID, NEW_REFRESH, REFRESH_TTL);
-    verifyNoInteractions(accessTokenProvider);
+    verify(accessTokenProvider).issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL));
   }
 
   @Test
@@ -272,5 +274,31 @@ class LoginSessionFacadeTest {
                 assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.INVALID_REQUEST));
     verify(loginSessionService).requireOwnedSession("", SESSION_ID);
     verifyNoInteractions(refreshTokenService);
+  }
+
+  @Test
+  @DisplayName("Access JWT 발급에 실패하면 DB를 롤백하고 Redis 신규 토큰을 조건부 폐기한다")
+  void compensatesWhenAccessIssueFails() {
+    // given
+    when(refreshTokenService.extractSessionId(OLD_REFRESH)).thenReturn(SESSION_ID);
+    when(loginSessionService.requireRefreshSessionForUpdate(SESSION_ID)).thenReturn(session);
+    when(session.getUserId()).thenReturn(USER_ID);
+    when(loginSessionService.isActiveUser(USER_ID)).thenReturn(true);
+    when(refreshTokenService.rotate(OLD_REFRESH, SESSION_ID, REFRESH_TTL, true))
+        .thenReturn(
+            new RefreshTokenService.Rotation(
+                RefreshTokenService.RotationStatus.ROTATED, NEW_REFRESH));
+    when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL)))
+        .thenThrow(new IllegalStateException("JWT signing failed"));
+
+    // when
+    // then
+    assertThatThrownBy(() -> facade.refresh(OLD_REFRESH))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT signing failed");
+    verify(loginSessionService).extendExpiration(SESSION_ID, EXPIRES_AT);
+    verify(transactionManager).rollback(any(TransactionStatus.class));
+    verify(transactionManager, never()).commit(any(TransactionStatus.class));
+    verify(refreshTokenService).revokeIfCurrentMatches(SESSION_ID, NEW_REFRESH, REFRESH_TTL);
   }
 }

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Access 인증을 위한 세션 유효성 조회와 로그인 세션 무효화를 담당한다. */
+/** Access 인증과 로그인 세션 잠금 조회·만료 연장·무효화를 담당한다. */
 @Service
 public class LoginSessionService implements AccessSessionValidator {
   private final UserRepository userRepository;

@@ -16,7 +16,7 @@ public class OpenApiConfig {
   public static final String BEARER_AUTH = "bearerAuth";
 
   /**
-   * API 문서의 공통 정보와 JWT Bearer 인증 방식을 구성한다.
+   * API 문서의 공통 정보와 Access JWT 및 Refresh Bearer 인증 방식을 구성한다.
    *
    * @return TOMO OpenAPI 문서 설정
    */

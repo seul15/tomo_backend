@@ -8,14 +8,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
  *
  * @param <T> 응답 데이터 타입
  * @param success 요청 성공 여부
- * @param data 응답 데이터
+ * @param data 응답 데이터. 데이터가 없는 성공 응답에서는 null
  * @param meta 요청 메타데이터
  */
 @Schema(description = "공통 성공 응답")
 public record CommonResponse<T>(
     @Schema(description = "요청 성공 여부", example = "true", requiredMode = Schema.RequiredMode.REQUIRED)
         boolean success,
-    @Schema(description = "API 응답 데이터", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "API 응답 데이터", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         @JsonInclude(JsonInclude.Include.NON_NULL)
         T data,
     @Schema(description = "요청 메타데이터", requiredMode = Schema.RequiredMode.REQUIRED)

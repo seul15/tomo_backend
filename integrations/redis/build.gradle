@@ -9,6 +9,7 @@ dependencies {
     api 'org.redisson:redisson:3.52.0'
     api 'org.apache.commons:commons-pool2'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     compileOnly 'com.github.spotbugs:spotbugs-annotations:4.10.5'
