@@ -158,6 +158,15 @@ public final class LoginSessionFacade {
     LOG.info("로그아웃 완료. sessionId={}", sessionId);
   }
 
+  /**
+   * 재발급 처리 실패 시 새 Refresh Token을 조건부 폐기하여 상태 불일치를 줄인다.
+   *
+   * <p>Redis에 저장된 현재 토큰이 새로 발급한 토큰과 일치할 때만 폐기한다. 보상 처리 자체가 실패하면 원래 예외에 억제 예외로 연결하여 실패 원인을 보존한다.
+   *
+   * @param sessionId 로그인 세션 ID
+   * @param newlyRotatedToken 폐기 여부를 확인할 신규 Refresh Token
+   * @param original 재발급 처리 중 발생한 원래 예외
+   */
   private void compensate(long sessionId, String newlyRotatedToken, RuntimeException original) {
     try {
       boolean revoked =

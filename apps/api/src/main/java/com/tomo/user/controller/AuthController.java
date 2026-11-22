@@ -38,6 +38,14 @@ public class AuthController implements AuthApiDocs {
     this.loginSessionFacade = loginSessionFacade;
   }
 
+  /**
+   * Refresh Token을 검증하고 새 인증 토큰 쌍을 반환한다.
+   *
+   * @param authorization Bearer 형식의 Refresh Token 요청 헤더
+   * @param request 요청 ID 확인용 HTTP 요청
+   * @return 새 Access Token과 Refresh Token을 포함한 공통 응답
+   * @throws BusinessException Refresh Token이 없거나 형식이 올바르지 않은 경우
+   */
   @Override
   @PostMapping(value = "/refresh", produces = MediaType.APPLICATION_JSON_VALUE)
   public CommonResponse<AuthRefreshResponse> refresh(
@@ -48,6 +56,15 @@ public class AuthController implements AuthApiDocs {
         AuthRefreshResponse.from(loginSessionFacade.refresh(token)), request.getRequestId());
   }
 
+  /**
+   * 인증된 사용자의 현재 로그인 세션을 종료한다.
+   *
+   * @param userId Access Token에서 인증된 사용자 ID
+   * @param authentication 검증된 Access Token의 로그인 세션 정보
+   * @param request 요청 ID 확인용 HTTP 요청
+   * @return 데이터 필드가 없는 로그아웃 성공 응답
+   * @throws BusinessException 인증 정보나 로그인 세션 정보가 유효하지 않은 경우
+   */
   @Override
   @PostMapping(value = "/logout", produces = MediaType.APPLICATION_JSON_VALUE)
   public CommonResponse<Void> logout(
@@ -64,6 +81,13 @@ public class AuthController implements AuthApiDocs {
     return CommonResponse.successWithoutData(request.getRequestId());
   }
 
+  /**
+   * Authorization 헤더에서 Bearer Refresh Token 원문을 추출한다.
+   *
+   * @param authorization Authorization 요청 헤더
+   * @return Bearer 접두사를 제거한 Refresh Token
+   * @throws BusinessException 헤더가 없거나 Bearer 형식이 잘못된 경우
+   */
   private static String requireRefreshBearerToken(String authorization) {
     if (authorization == null) {
       throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);

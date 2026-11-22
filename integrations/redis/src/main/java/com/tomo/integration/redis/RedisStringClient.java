@@ -157,6 +157,13 @@ public class RedisStringClient {
     return Long.valueOf(1L).equals(result);
   }
 
+  /**
+   * Redis에 전달할 TTL이 1밀리초 이상인지 검증하고 밀리초 단위로 변환한다.
+   *
+   * @param ttl 검증할 만료기간
+   * @return 밀리초 단위 TTL
+   * @throws IllegalArgumentException TTL이 null이거나 1밀리초 미만인 경우
+   */
   private static long requirePositiveTtlMillis(Duration ttl) {
     if (ttl == null || ttl.isZero() || ttl.isNegative() || ttl.toMillis() < 1) {
       throw new IllegalArgumentException("Redis TTL은 1밀리초 이상이어야 합니다.");

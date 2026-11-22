@@ -167,6 +167,12 @@ public class RefreshTokenService {
         key(sessionId), hash(newlyIssuedToken), REVOKED_VALUE, ttl);
   }
 
+  /**
+   * 로그인 세션 ID와 암호학적으로 안전한 난수로 Refresh Token을 생성한다.
+   *
+   * @param sessionId 토큰에 연결할 로그인 세션 ID
+   * @return 세션 ID와 URL-safe Base64 난수로 구성된 Refresh Token
+   */
   private String newToken(long sessionId) {
     byte[] randomBytes = new byte[RANDOM_BYTES];
     secureRandom.nextBytes(randomBytes);
@@ -174,10 +180,25 @@ public class RefreshTokenService {
     return sessionId + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
   }
 
+  /**
+   * 로그인 세션에 대응하는 Redis Refresh Token 키를 생성한다.
+   *
+   * @param sessionId 로그인 세션 ID
+   * @return 세션별 Redis 키
+   */
   private static String key(long sessionId) {
     return KEY_PREFIX + sessionId;
   }
 
+  /**
+   * Refresh Token 원문을 SHA-256 해시 문자열로 변환한다.
+   *
+   * <p>Redis에는 토큰 원문 대신 해시값을 저장한다.
+   *
+   * @param token 해시할 Refresh Token 원문
+   * @return SHA-256 해시의 16진수 문자열
+   * @throws IllegalStateException SHA-256 알고리즘을 사용할 수 없는 경우
+   */
   private static String hash(String token) {
     try {
       byte[] digest =

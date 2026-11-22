@@ -13,6 +13,7 @@ public class OpenApiConfig {
   /** Refresh Token 인증을 위한 Bearer Security Scheme 이름. */
   public static final String REFRESH_BEARER_AUTH = "refreshBearerAuth";
 
+  /** Access JWT 인증을 위한 Bearer Security Scheme 이름. */
   public static final String BEARER_AUTH = "bearerAuth";
 
   /**
