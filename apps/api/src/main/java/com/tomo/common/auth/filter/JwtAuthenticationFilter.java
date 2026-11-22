@@ -53,6 +53,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     this.objectWriter = objectMapper.writer();
   }
 
+  @Override
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    String requestUri = request.getRequestURI();
+    String contextPath = request.getContextPath();
+    String path = requestUri.substring(contextPath.length());
+    String method = request.getMethod();
+
+    if ("POST".equals(method)) {
+      return "/api/v1/auth/google".equals(path)
+          || "/api/v1/auth/kakao".equals(path)
+          || "/api/v1/auth/refresh".equals(path)
+          || "/api/v1/users/me/profile".equals(path);
+    }
+
+    return "GET".equals(method) && "/api/v1/auth/nickname".equals(path);
+  }
+
   /**
    * HTTP 요청의 Access Token과 로그인 세션을 검증하여 인증 정보를 등록한다.
    *
@@ -120,6 +137,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     UsernamePasswordAuthenticationToken authentication =
         new UsernamePasswordAuthenticationToken(claims.userId(), null, List.of());
 
+    authentication.setDetails(claims);
     SecurityContext context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(authentication);
     SecurityContextHolder.setContext(context);

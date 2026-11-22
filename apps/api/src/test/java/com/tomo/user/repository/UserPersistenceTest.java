@@ -15,6 +15,7 @@ import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -153,5 +154,29 @@ class UserPersistenceTest {
     assertThat(otherUserDeletion).isZero();
     assertThat(ownerDeletion).isEqualTo(1L);
     assertThat(loginSessionRepository.findById(sessionId)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Repository UPDATE로 로그인 세션의 만료 시각을 갱신한다")
+  void updatesSessionExpirationUsingRepository() {
+    // given
+    User user = userRepository.saveAndFlush(User.createPending());
+    LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+    LoginSession session =
+        loginSessionRepository.saveAndFlush(
+            LoginSession.create(user.getId(), now, now.plusDays(1)));
+    Long sessionId = session.getId();
+    LocalDateTime newExpiresAt = now.plusDays(7);
+
+    // when
+    int count = loginSessionRepository.updateExpiresAt(sessionId, newExpiresAt);
+    entityManager.clear();
+
+    // then
+    assertThat(count).isEqualTo(1);
+    assertThat(loginSessionRepository.findById(sessionId))
+        .get()
+        .extracting(LoginSession::getExpiresAt)
+        .isEqualTo(newExpiresAt);
   }
 }

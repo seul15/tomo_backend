@@ -1,5 +1,6 @@
 package com.tomo.common.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -14,7 +15,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record CommonResponse<T>(
     @Schema(description = "요청 성공 여부", example = "true", requiredMode = Schema.RequiredMode.REQUIRED)
         boolean success,
-    @Schema(description = "API 응답 데이터", requiredMode = Schema.RequiredMode.REQUIRED) T data,
+    @Schema(description = "API 응답 데이터", requiredMode = Schema.RequiredMode.REQUIRED)
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        T data,
     @Schema(description = "요청 메타데이터", requiredMode = Schema.RequiredMode.REQUIRED)
         ResponseMeta meta) {
   /**
@@ -27,5 +30,15 @@ public record CommonResponse<T>(
    */
   public static <T> CommonResponse<T> success(T data, String requestId) {
     return new CommonResponse<>(true, data, ResponseMeta.from(requestId));
+  }
+
+  /**
+   * 데이터 본문 없이 성공 여부와 요청 메타데이터만 반환한다.
+   *
+   * @param requestId 요청 추적 ID
+   * @return data 필드가 생략되는 성공 응답
+   */
+  public static CommonResponse<Void> successWithoutData(String requestId) {
+    return new CommonResponse<>(true, null, ResponseMeta.from(requestId));
   }
 }

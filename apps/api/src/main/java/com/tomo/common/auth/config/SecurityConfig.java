@@ -23,16 +23,16 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/** API 문서 공개 경로와 Access Token 인증 정책을 설정한다. */
+/** 공개 진입점과 Access JWT 보호 API의 보안 정책을 정의한다. */
 @Configuration
 public class SecurityConfig {
   private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
 
   /**
-   * 인증 정보가 없는 요청에 공통 오류 응답을 반환한다.
+   * 인증되지 않은 요청에 공통 오류 응답을 반환한다.
    *
-   * @param objectMapper JSON 직렬화 객체
-   * @return 인증 실패 처리기
+   * @param objectMapper 오류 응답 직렬화기
+   * @return 인증 진입점
    */
   @Bean
   public AuthenticationEntryPoint authenticationEntryPoint(ObjectMapper objectMapper) {
@@ -50,10 +50,10 @@ public class SecurityConfig {
   }
 
   /**
-   * 권한이 부족한 요청에 공통 오류 응답을 반환한다.
+   * 접근 권한이 없는 요청에 공통 오류 응답을 반환한다.
    *
-   * @param objectMapper JSON 직렬화 객체
-   * @return 접근 권한 부족 처리기
+   * @param objectMapper 오류 응답 직렬화기
+   * @return 접근 거부 처리기
    */
   @Bean
   public AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
@@ -71,15 +71,15 @@ public class SecurityConfig {
   }
 
   /**
-   * API 문서 공개 경로와 JWT 인증 필터를 구성한다.
+   * JWT 필터 및 Method별 허용 경로를 구성한다. permitAll 경로의 실제 인증은 해당 API가 수행한다.
    *
-   * @param http HTTP 보안 설정
+   * @param http 보안 설정 대상
    * @param authenticationEntryPoint 인증 실패 처리기
-   * @param accessDeniedHandler 접근 권한 부족 처리기
-   * @param accessTokenProvider Access Token 검증기
-   * @param accessSessionValidator 로그인 세션 검증기
-   * @param objectMapper JSON 직렬화 객체
-   * @return 보안 필터 체인
+   * @param accessDeniedHandler 권한 거부 처리기
+   * @param accessTokenProvider Access JWT 검증기
+   * @param accessSessionValidator DB 세션 검증기
+   * @param objectMapper 오류 직렬화기
+   * @return API 보안 필터 체인
    * @throws Exception 필터 체인 구성 실패 시
    */
   @Bean
@@ -113,6 +113,15 @@ public class SecurityConfig {
                         "/v3/api-docs",
                         "/v3/api-docs/**",
                         "/v3/api-docs.yaml")
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.POST,
+                        "/api/v1/auth/google",
+                        "/api/v1/auth/kakao",
+                        "/api/v1/auth/refresh",
+                        "/api/v1/users/me/profile")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/auth/nickname")
                     .permitAll()
                     .anyRequest()
                     .authenticated())

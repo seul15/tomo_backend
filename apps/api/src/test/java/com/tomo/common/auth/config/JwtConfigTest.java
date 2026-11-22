@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tomo.common.auth.token.AccessTokenProvider;
+import com.tomo.common.auth.token.SignupTokenProvider;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -11,11 +12,19 @@ import java.time.Instant;
 import java.util.Base64;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class JwtConfigTest {
   private final ApplicationContextRunner contextRunner =
-      new ApplicationContextRunner().withUserConfiguration(JwtConfig.class);
+      new ApplicationContextRunner()
+          .withUserConfiguration(JwtConfig.class)
+          .withInitializer(
+              context ->
+                  context
+                      .getBeanFactory()
+                      .setConversionService(ApplicationConversionService.getSharedInstance()))
+          .withPropertyValues("tomo.auth.signup-token-expiration=10m");
 
   @Test
   @DisplayName("설정된 서명 키로 Access Token을 발급하고 검증한다")
@@ -32,6 +41,11 @@ class JwtConfigTest {
             context -> {
               // then
               assertThat(context).hasSingleBean(AccessTokenProvider.class);
+
+              assertThat(context).hasSingleBean(SignupTokenProvider.class);
+              SignupTokenProvider signupProvider = context.getBean(SignupTokenProvider.class);
+              String signupToken = signupProvider.issue("pending-user");
+              assertThat(signupProvider.verify(signupToken)).isEqualTo("pending-user");
 
               AccessTokenProvider provider = context.getBean(AccessTokenProvider.class);
               String token = provider.issue("user-id", 10L, Instant.now().plusSeconds(600));

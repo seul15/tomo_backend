@@ -1,11 +1,8 @@
 package com.tomo.user.service;
 
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
-import com.tomo.user.entity.LoginSession;
-import com.tomo.user.repository.LoginSessionRepository;
-import com.tomo.user.service.model.RefreshTokenValidationResult;
+import com.tomo.user.exception.UserErrorCode;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -13,19 +10,17 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-/** 로그인 세션에 연결된 Refresh Token의 발급, 검증, 폐기를 담당한다. */
+/** Redis Refresh Token의 발급·교체·폐기를 담당하며 DB 세션 변경은 수행하지 않는다. */
 @Service
 public class RefreshTokenService {
   private static final Logger LOG = LoggerFactory.getLogger(RefreshTokenService.class);
@@ -33,208 +28,143 @@ public class RefreshTokenService {
   private static final String REVOKED_VALUE = "__REVOKED__";
   private static final int RANDOM_BYTES = 32;
   private static final int MAX_TOKEN_LENGTH = 64;
-
+  private static final Duration REUSE_GRACE = Duration.ofSeconds(10);
   private static final Pattern TOKEN_PATTERN =
       Pattern.compile("([1-9][0-9]*)\\.([A-Za-z0-9_-]{43})");
 
-  private final LoginSessionRepository loginSessionRepository;
-  private final LoginSessionService loginSessionService;
   private final RedisStringClient redisStringClient;
   private final Clock clock;
   private final SecureRandom secureRandom = new SecureRandom();
 
   /**
-   * Refresh Token 관리에 필요한 의존성을 주입한다.
+   * Refresh Token 연동 기능을 초기화한다.
    *
-   * @param loginSessionRepository 로그인 세션 저장소
-   * @param loginSessionService 로그인 세션 유효성 검증 서비스
-   * @param redisStringClient Redis 문자열 저장 기능
-   * @param clock 만료 시각 확인용 시계
+   * @param redisStringClient Redis 문자열 연동
+   * @param clock 현재 시각 기준
    */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP2",
       justification = "Spring이 관리하는 RedisStringClient를 공유 의존성으로 주입받으며 외부에 노출하지 않는다.")
-  public RefreshTokenService(
-      LoginSessionRepository loginSessionRepository,
-      LoginSessionService loginSessionService,
-      RedisStringClient redisStringClient,
-      Clock clock) {
-    this.loginSessionRepository = loginSessionRepository;
-    this.loginSessionService = loginSessionService;
+  public RefreshTokenService(RedisStringClient redisStringClient, Clock clock) {
     this.redisStringClient = redisStringClient;
     this.clock = clock;
   }
 
   /**
-   * 기존 로그인 세션에 Refresh Token을 최초 발급한다.
+   * Refresh Token에서 로그인 세션 ID를 추출한다. ID의 존재는 DB에서 별도로 검증한다.
    *
-   * <p>DB 로그인 세션의 남은 유효시간을 Redis TTL로 사용한다. 이미 발급한 세션의 토큰은 덮어쓰지 않는다.
-   *
-   * @param userId 검증된 사용자 ID
-   * @param sessionId 로그인 세션 ID
-   * @return Refresh Token 원문
-   * @throws BusinessException 세션이 유효하지 않거나 이미 토큰이 존재하는 경우
+   * @param token Refresh Token 원문
+   * @return 형식 검증을 통과한 세션 ID
+   * @throws BusinessException Refresh Token 형식이 잘못된 경우
    */
-  public String issue(String userId, long sessionId) {
-    if (userId == null || userId.isBlank() || sessionId <= 0) {
-      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
+  public long extractSessionId(String token) {
+    if (token == null || token.length() > MAX_TOKEN_LENGTH) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
-
-    LoginSession session =
-        loginSessionRepository
-            .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-
-    if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
+    Matcher matcher = TOKEN_PATTERN.matcher(token);
+    if (!matcher.matches()) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
-
-    Instant expiresAt = session.getExpiresAt().toInstant(ZoneOffset.UTC);
-    Duration ttl = Duration.between(clock.instant(), expiresAt);
-
-    if (ttl.isZero() || ttl.isNegative()) {
-      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
+    try {
+      return Long.parseLong(matcher.group(1));
+    } catch (NumberFormatException exception) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
+  }
 
-    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
+  /**
+   * DB에 이미 생성된 로그인 세션에 최초 Refresh Token을 발급한다.
+   *
+   * <p>동일 세션에 토큰이 있거나 폐기 표시가 남아 있으면 덮어쓰지 않는다.
+   *
+   * @param sessionId 세션 ID
+   * @param expiresAt DB 세션 만료 시각(UTC)
+   * @return 신규 Refresh Token 원문
+   * @throws BusinessException 세션이 만료되었거나 기존 토큰 키가 존재하는 경우
+   */
+  public String issue(long sessionId, LocalDateTime expiresAt) {
+    if (sessionId <= 0 || expiresAt == null) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+    }
+    Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));
+    if (ttl.toMillis() < 1) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
 
     String token = newToken(sessionId);
-
-    boolean stored = redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl);
-
-    if (!stored) {
-      LOG.debug("Refresh Token 중복 발급 거부. sessionId={}", sessionId);
-      throw new BusinessException(CommonErrorCode.RESOURCE_CONFLICT);
+    if (!redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl)) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
-
-    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      boolean removed = redisStringClient.deleteIfMatches(key(sessionId), hash(token));
-
-      LOG.warn("Refresh Token 발급 후 세션 무효화. sessionId={}, tokenRemoved={}", sessionId, removed);
-
-      throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
-    }
-
-    LOG.info("Refresh Token 발급 완료. sessionId={}", sessionId);
-
+    LOG.info("Refresh Token 최초 발급. sessionId={}", sessionId);
     return token;
   }
 
   /**
-   * 기존 Refresh Token을 새 토큰으로 교체한다.
+   * 현재 Refresh Token을 새로운 토큰으로 교체하거나 직전 토큰 재사용 여부를 판정한다.
    *
-   * @param currentToken 기존 Refresh Token
-   * @return 새 Refresh Token
-   * @throws BusinessException 토큰이나 로그인 세션이 유효하지 않은 경우
+   * @param token 기존 Refresh Token 원문
+   * @param sessionId 잠금 조회로 검증한 로그인 세션 ID
+   * @param ttl 정상 교체 후 Redis 유지기간
+   * @param activeUser DB에서 확인한 ACTIVE 회원 여부
+   * @return 교체 결과 및 교체에 성공한 경우 새 토큰 원문
+   * @throws BusinessException 잘못된 세션 ID가 전달된 경우
    */
-  public String rotate(String currentToken) {
-    long sessionId = parseSessionId(currentToken);
-
-    if (sessionId <= 0) {
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+  public Rotation rotate(String token, long sessionId, Duration ttl, boolean activeUser) {
+    if (extractSessionId(token) != sessionId || sessionId <= 0) {
+      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
     }
-
-    LoginSession session =
-        loginSessionRepository
-            .findById(sessionId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN));
-
-    String userId = session.getUserId();
-
-    Duration ttl =
-        Duration.between(clock.instant(), session.getExpiresAt().toInstant(ZoneOffset.UTC));
-
-    if (ttl.isZero()
-        || ttl.isNegative()
-        || ttl.toMillis() < 1
-        || !loginSessionService.isValidAccessSession(userId, sessionId)) {
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+    String next = newToken(sessionId);
+    long status =
+        redisStringClient.rotateWithHistory(
+            key(sessionId), hash(token), hash(next), ttl, REUSE_GRACE, activeUser);
+    if (status == 1) {
+      LOG.info("Refresh Token 교체 완료. sessionId={}", sessionId);
+      return new Rotation(RotationStatus.ROTATED, next);
     }
-
-    String rotatedToken = newToken(sessionId);
-
-    boolean replaced =
-        redisStringClient.compareAndSetWithTtl(
-            key(sessionId), hash(currentToken), hash(rotatedToken), ttl);
-
-    if (!replaced) {
-      LOG.debug("Refresh Token 교체 거부. sessionId={}", sessionId);
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+    if (status == 2) {
+      return new Rotation(RotationStatus.PREVIOUS_WITHIN_GRACE, null);
     }
-
-    if (!loginSessionService.isValidAccessSession(userId, sessionId)) {
-      boolean removed = redisStringClient.deleteIfMatches(key(sessionId), hash(rotatedToken));
-
-      LOG.warn("Refresh Token 교체 후 세션 무효화. sessionId={}, tokenRemoved={}", sessionId, removed);
-
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+    if (status == 3) {
+      return new Rotation(RotationStatus.PREVIOUS_AFTER_GRACE, null);
     }
-
-    LOG.info("Refresh Token 교체 완료. sessionId={}", sessionId);
-
-    return rotatedToken;
+    if (status == 4) {
+      return new Rotation(RotationStatus.FORBIDDEN, null);
+    }
+    return new Rotation(RotationStatus.INVALID, null);
   }
 
   /**
-   * Refresh Token 및 연결된 로그인 세션의 유효성을 확인한다.
+   * DB 세션을 삭제하기 전에 해당 세션의 Refresh Token과 재사용 이력을 폐기한다.
    *
-   * <p>검증 과정에서 토큰을 변경하거나 Redis TTL을 연장하지 않는다.
-   *
-   * @param token Refresh Token 원문
-   * @return 유효한 사용자 및 로그인 세션 정보
+   * @param sessionId 세션 ID
+   * @param expiresAt 현재 DB 세션 만료 시각(UTC)
+   * @throws IllegalArgumentException 세션 ID가 유효하지 않거나 만료 시각이 null인 경우
    */
-  public Optional<RefreshTokenValidationResult> findValidSession(String token) {
-
-    long sessionId = parseSessionId(token);
-
-    if (sessionId <= 0) {
-      return Optional.empty();
-    }
-
-    String storedHash = redisStringClient.get(key(sessionId));
-
-    if (storedHash == null) {
-      return Optional.empty();
-    }
-
-    byte[] expected = storedHash.getBytes(StandardCharsets.US_ASCII);
-    byte[] actual = hash(token).getBytes(StandardCharsets.US_ASCII);
-
-    if (!MessageDigest.isEqual(expected, actual)) {
-      return Optional.empty();
-    }
-
-    return loginSessionRepository
-        .findById(sessionId)
-        .filter(session -> loginSessionService.isValidAccessSession(session.getUserId(), sessionId))
-        .map(session -> new RefreshTokenValidationResult(session.getUserId(), sessionId));
-  }
-
-  /**
-   * 로그인 세션 삭제 전에 Refresh Token을 폐기한다.
-   *
-   * <p>폐기 표시는 세션 만료까지 유지하여 뒤늦은 토큰 발급을 차단한다.
-   *
-   * @param sessionId 로그인 세션 ID
-   * @param expiresAt 세션 만료 시각
-   * @throws BusinessException 세션 정보가 올바르지 않은 경우
-   */
-  void revokeBeforeSessionDeletion(long sessionId, LocalDateTime expiresAt) {
+  public void revokeBeforeSessionDeletion(long sessionId, LocalDateTime expiresAt) {
     if (sessionId <= 0 || expiresAt == null) {
-      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
+      throw new IllegalArgumentException("로그인 세션 정보가 필요합니다.");
     }
 
     Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));
-
-    if (ttl.toMillis() <= 0) {
+    if (ttl.toMillis() < 1) {
       ttl = Duration.ofMillis(1);
     }
 
     redisStringClient.set(key(sessionId), REVOKED_VALUE, ttl);
+    LOG.info("Refresh Token 세션 폐기. sessionId={}", sessionId);
+  }
 
-    LOG.info("Refresh Token 폐기 완료. sessionId={}", sessionId);
+  /**
+   * DB 커밋 실패 후 새로 저장한 토큰이 아직 현재 토큰일 때만 폐기한다.
+   *
+   * @param sessionId 세션 ID
+   * @param newlyIssuedToken DB 커밋 전에 생성한 새 Refresh Token
+   * @param ttl 보상 폐기 표시 유지기간
+   * @return 현재 토큰이 일치해 폐기되었다면 true
+   */
+  public boolean revokeIfCurrentMatches(long sessionId, String newlyIssuedToken, Duration ttl) {
+    return redisStringClient.revokeIfCurrentMatches(
+        key(sessionId), hash(newlyIssuedToken), REVOKED_VALUE, ttl);
   }
 
   private String newToken(long sessionId) {
@@ -248,32 +178,30 @@ public class RefreshTokenService {
     return KEY_PREFIX + sessionId;
   }
 
-  private static long parseSessionId(String token) {
-    if (token == null || token.length() > MAX_TOKEN_LENGTH) {
-      return -1;
-    }
-
-    Matcher matcher = TOKEN_PATTERN.matcher(token);
-
-    if (!matcher.matches()) {
-      return -1;
-    }
-
-    try {
-      return Long.parseLong(matcher.group(1));
-    } catch (NumberFormatException exception) {
-      return -1;
-    }
-  }
-
   private static String hash(String token) {
     try {
       byte[] digest =
           MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-
       return HexFormat.of().formatHex(digest);
     } catch (NoSuchAlgorithmException exception) {
-      throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다.", exception);
+      throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
     }
   }
+
+  /** Refresh Token의 원자적 교체 판정. */
+  public enum RotationStatus {
+    ROTATED,
+    PREVIOUS_WITHIN_GRACE,
+    PREVIOUS_AFTER_GRACE,
+    FORBIDDEN,
+    INVALID
+  }
+
+  /**
+   * 원자적 교체 결과.
+   *
+   * @param status 교체·재사용 판정
+   * @param newToken 교체 성공 시 새 Refresh Token, 그 외 null
+   */
+  public record Rotation(RotationStatus status, String newToken) {}
 }

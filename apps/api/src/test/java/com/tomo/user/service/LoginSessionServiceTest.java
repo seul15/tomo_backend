@@ -1,13 +1,16 @@
 package com.tomo.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tomo.common.exception.BusinessException;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.entity.User;
+import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import java.time.Clock;
@@ -145,5 +148,100 @@ class LoginSessionServiceTest {
     // then
     assertThat(invalidated).isFalse();
     verifyNoInteractions(loginSessionRepository);
+  }
+
+  @Test
+  @DisplayName("재발급용 로그인 세션 조회는 비관적 잠금 조회를 사용한다")
+  void locksRefreshSession() {
+    // given
+    when(loginSessionRepository.findByIdForUpdate(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getExpiresAt())
+        .thenReturn(LocalDateTime.ofInstant(NOW.plusSeconds(60), ZoneOffset.UTC));
+
+    // when
+    LoginSession result = service.requireRefreshSessionForUpdate(SESSION_ID);
+
+    // then
+    assertThat(result).isSameAs(session);
+    verify(loginSessionRepository).findByIdForUpdate(SESSION_ID);
+  }
+
+  @Test
+  @DisplayName("재발급 요청의 세션이 만료됐으면 INVALID_REFRESH_TOKEN을 반환한다")
+  void rejectsExpiredRefreshSession() {
+    // given
+    when(loginSessionRepository.findByIdForUpdate(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getExpiresAt())
+        .thenReturn(LocalDateTime.ofInstant(NOW.minusSeconds(1), ZoneOffset.UTC));
+
+    // when
+    // then
+    assertThatThrownBy(() -> service.requireRefreshSessionForUpdate(SESSION_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+  }
+
+  @Test
+  @DisplayName("로그아웃할 세션을 소유자 확인과 함께 쓰기 잠금으로 조회한다")
+  void locksOwnedLogoutSession() {
+    // given
+    when(loginSessionRepository.findByIdForUpdate(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getUserId()).thenReturn(USER_ID);
+    when(session.getExpiresAt())
+        .thenReturn(LocalDateTime.ofInstant(NOW.plusSeconds(60), ZoneOffset.UTC));
+
+    // when
+    LoginSession result = service.requireOwnedSession(USER_ID, SESSION_ID);
+
+    // then
+    assertThat(result).isSameAs(session);
+    verify(loginSessionRepository).findByIdForUpdate(SESSION_ID);
+  }
+
+  @Test
+  @DisplayName("만료시간 변경은 Entity 메서드 대신 Repository UPDATE를 호출한다")
+  void updatesSessionExpirationWithRepository() {
+    // given
+    LocalDateTime newExpiresAt = LocalDateTime.ofInstant(NOW.plusSeconds(604800), ZoneOffset.UTC);
+    when(loginSessionRepository.updateExpiresAt(SESSION_ID, newExpiresAt)).thenReturn(1);
+
+    // when
+    service.extendExpiration(SESSION_ID, newExpiresAt);
+
+    // then
+    verify(loginSessionRepository).updateExpiresAt(SESSION_ID, newExpiresAt);
+  }
+
+  @Test
+  @DisplayName("ACTIVE 계정만 재발급 대상 사용자로 인정한다")
+  void checksActiveAccountForRefresh() {
+    // given
+    when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
+    when(user.getAccountStatus()).thenReturn(AccountStatus.ACTIVE);
+
+    // when
+    boolean active = service.isActiveUser(USER_ID);
+
+    // then
+    assertThat(active).isTrue();
+  }
+
+  @Test
+  @DisplayName("다른 사용자의 로그인 세션에는 접근할 수 없다")
+  void rejectsOtherUsersLogoutSession() {
+    // given
+    when(loginSessionRepository.findByIdForUpdate(SESSION_ID)).thenReturn(Optional.of(session));
+    when(session.getUserId()).thenReturn("other-user");
+
+    // when
+    // then
+    assertThatThrownBy(() -> service.requireOwnedSession(USER_ID, SESSION_ID))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.LOGOUT_FORBIDDEN));
   }
 }

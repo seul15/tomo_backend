@@ -10,17 +10,33 @@ import org.springframework.stereotype.Component;
 /** Redis 문자열 값의 저장, 조회, 삭제를 담당한다. */
 @Component
 public class RedisStringClient {
-  private static final DefaultRedisScript<Long> REPLACE_IF_MATCHES_SCRIPT =
+  private static final DefaultRedisScript<Long> ROTATE_WITH_HISTORY_SCRIPT =
       new DefaultRedisScript<>(
-          "if redis.call('GET', KEYS[1]) == ARGV[1] then "
-              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2]); "
-              + "return 1 else return 0 end",
+          "local value = redis.call('GET', KEYS[1]); "
+              + "if not value then return 0 end; "
+              + "local current, previous, changedAt = string.match(value, "
+              + "'^([0-9a-f]+):([0-9a-f]+):(%d+)$'); "
+              + "if not current then current = value end; "
+              + "local currentTime = redis.call('TIME'); "
+              + "local now = tonumber(currentTime[1])*1000 + math.floor(tonumber(currentTime[2])/1000); "
+              + "if current == ARGV[1] then "
+              + "if ARGV[5] == '0' then return 4 end; "
+              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2] .. ':' .. current .. ':' .. now); "
+              + "return 1 end; "
+              + "if previous and previous == ARGV[1] then "
+              + "if now - tonumber(changedAt) <= tonumber(ARGV[4]) then return 2 end; "
+              + "return 3 end; "
+              + "return 0",
           Long.class);
 
-  private static final DefaultRedisScript<Long> DELETE_IF_MATCHES_SCRIPT =
+  private static final DefaultRedisScript<Long> REVOKE_IF_CURRENT_SCRIPT =
       new DefaultRedisScript<>(
-          "if redis.call('GET', KEYS[1]) == ARGV[1] then "
-              + "return redis.call('DEL', KEYS[1]) else return 0 end",
+          "local value = redis.call('GET', KEYS[1]); "
+              + "if not value then return 0 end; "
+              + "local current = string.match(value, '^([0-9a-f]+):') or value; "
+              + "if current == ARGV[1] then "
+              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2]); return 1 end; "
+              + "return 0",
           Long.class);
 
   private final StringRedisTemplate redisTemplate;
@@ -60,47 +76,6 @@ public class RedisStringClient {
   }
 
   /**
-   * 기존 값이 일치할 때만 새 값과 TTL을 원자적으로 저장한다.
-   *
-   * @param key Redis 키
-   * @param expectedValue 기존 값
-   * @param newValue 새 값
-   * @param ttl 새 TTL
-   * @return 교체 성공 여부
-   * @throws IllegalArgumentException TTL이 1밀리초 미만인 경우
-   */
-  public boolean compareAndSetWithTtl(
-      String key, String expectedValue, String newValue, Duration ttl) {
-
-    if (ttl.isZero() || ttl.isNegative() || ttl.toMillis() < 1) {
-      throw new IllegalArgumentException("Redis TTL은 1밀리초 이상이어야 합니다.");
-    }
-
-    Long result =
-        redisTemplate.execute(
-            REPLACE_IF_MATCHES_SCRIPT,
-            List.of(key),
-            expectedValue,
-            newValue,
-            Long.toString(ttl.toMillis()));
-
-    return Long.valueOf(1L).equals(result);
-  }
-
-  /**
-   * 저장된 값이 일치하는 경우에만 Redis 키를 삭제한다.
-   *
-   * @param key Redis 키
-   * @param expectedValue 삭제 대상 값
-   * @return 삭제 성공 여부
-   */
-  public boolean deleteIfMatches(String key, String expectedValue) {
-    Long result = redisTemplate.execute(DELETE_IF_MATCHES_SCRIPT, List.of(key), expectedValue);
-
-    return Long.valueOf(1L).equals(result);
-  }
-
-  /**
    * Redis 키에 TTL과 함께 값을 저장한다.
    *
    * @param key Redis 키
@@ -118,5 +93,74 @@ public class RedisStringClient {
    */
   public void delete(String key) {
     redisTemplate.delete(key);
+  }
+
+  /**
+   * 한 Redis 키에서 현재 토큰 해시를 교체하고 직전 해시와 교체 시각을 원자적으로 기록한다.
+   *
+   * @param key 로그인 세션별 Redis 키
+   * @param expectedHash 요청 Refresh Token 해시
+   * @param nextHash 신규 Refresh Token 해시
+   * @param ttl 교체 후 토큰 수명
+   * @param grace 직전 토큰 재사용 유예시간
+   * @param activeUser DB에서 확인한 ACTIVE 계정 여부
+   * @return 1=교체, 2=유예시간 내 직전 토큰, 3=유예 초과 직전 토큰, 4=비활성 회원, 0=불일치
+   * @throws IllegalArgumentException TTL 또는 유예시간이 올바르지 않은 경우
+   * @throws IllegalStateException Redis Lua 스크립트 실행 결과가 null인 경우
+   */
+  public long rotateWithHistory(
+      String key,
+      String expectedHash,
+      String nextHash,
+      Duration ttl,
+      Duration grace,
+      boolean activeUser) {
+    long ttlMillis = requirePositiveTtlMillis(ttl);
+    if (grace == null || grace.isNegative()) {
+      throw new IllegalArgumentException("Redis 토큰 재사용 유예시간이 올바르지 않습니다.");
+    }
+    Long result =
+        redisTemplate.execute(
+            ROTATE_WITH_HISTORY_SCRIPT,
+            List.of(key),
+            expectedHash,
+            nextHash,
+            Long.toString(ttlMillis),
+            Long.toString(grace.toMillis()),
+            activeUser ? "1" : "0");
+    if (result == null) {
+      throw new IllegalStateException("Redis Refresh Token 교체 결과가 없습니다.");
+    }
+    return result;
+  }
+
+  /**
+   * Redis 현재 토큰 해시가 예상값과 같을 때만 폐기 표시로 교체한다.
+   *
+   * @param key 로그인 세션별 Redis 키
+   * @param expectedHash 폐기 대상 현재 토큰 해시
+   * @param revokedValue 폐기 표시 값
+   * @param ttl 폐기 표시 유지기간
+   * @return 예상 해시가 현재 값과 일치하여 폐기했으면 true
+   * @throws IllegalArgumentException TTL이 유효하지 않은 경우
+   */
+  public boolean revokeIfCurrentMatches(
+      String key, String expectedHash, String revokedValue, Duration ttl) {
+    long ttlMillis = requirePositiveTtlMillis(ttl);
+    Long result =
+        redisTemplate.execute(
+            REVOKE_IF_CURRENT_SCRIPT,
+            List.of(key),
+            expectedHash,
+            revokedValue,
+            Long.toString(ttlMillis));
+    return Long.valueOf(1L).equals(result);
+  }
+
+  private static long requirePositiveTtlMillis(Duration ttl) {
+    if (ttl == null || ttl.isZero() || ttl.isNegative() || ttl.toMillis() < 1) {
+      throw new IllegalArgumentException("Redis TTL은 1밀리초 이상이어야 합니다.");
+    }
+    return ttl.toMillis();
   }
 }
