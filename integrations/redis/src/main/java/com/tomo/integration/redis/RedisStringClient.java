@@ -39,6 +39,18 @@ public class RedisStringClient {
               + "return 0",
           Long.class);
 
+  private static final DefaultRedisScript<Long> RESTORE_PREVIOUS_IF_CURRENT_SCRIPT =
+      new DefaultRedisScript<>(
+          "local value = redis.call('GET', KEYS[1]); "
+              + "if not value then return 0 end; "
+              + "local current, previous = string.match(value, "
+              + "'^([0-9a-f]+):([0-9a-f]+):%d+$'); "
+              + "if current == ARGV[1] and previous == ARGV[2] then "
+              + "redis.call('PSETEX', KEYS[1], ARGV[3], previous); "
+              + "return 1 end; "
+              + "return 0",
+          Long.class);
+
   private final StringRedisTemplate redisTemplate;
 
   /**
@@ -154,6 +166,30 @@ public class RedisStringClient {
             expectedHash,
             revokedValue,
             Long.toString(ttlMillis));
+    return Long.valueOf(1L).equals(result);
+  }
+
+  /**
+   * Redis 현재 토큰 해시와 직전 해시가 일치하면 이전 해시와 TTL을 복원한다.
+   *
+   * @param key 로그인 세션별 Redis 키
+   * @param expectedCurrentHash 현재 저장된 신규 토큰 해시
+   * @param previousHash 복원할 기존 토큰 해시
+   * @param ttl 복원할 토큰의 남은 유효기간
+   * @return 기존 토큰 해시 복원에 성공하면 true
+   */
+  public boolean restorePreviousIfCurrentMatches(
+      String key, String expectedCurrentHash, String previousHash, Duration ttl) {
+    long ttlMillis = requirePositiveTtlMillis(ttl);
+
+    Long result =
+        redisTemplate.execute(
+            RESTORE_PREVIOUS_IF_CURRENT_SCRIPT,
+            List.of(key),
+            expectedCurrentHash,
+            previousHash,
+            Long.toString(ttlMillis));
+
     return Long.valueOf(1L).equals(result);
   }
 

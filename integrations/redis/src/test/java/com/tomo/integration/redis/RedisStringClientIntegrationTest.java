@@ -97,9 +97,13 @@ class RedisStringClientIntegrationTest {
   @DisplayName("직전보다 오래된 토큰은 세션 폐기 대상이 아니라 불일치 상태 0이다")
   void ignoresOlderHistory() {
     // given
-    client.setIfAbsent(KEY, OLD, TTL);
-    client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true);
-    client.rotateWithHistory(KEY, NEXT, AFTER, TTL, Duration.ofSeconds(10), true);
+    assertThat(client.setIfAbsent(KEY, OLD, TTL)).isTrue();
+
+    assertThat(client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true))
+        .isEqualTo(1L);
+
+    assertThat(client.rotateWithHistory(KEY, NEXT, AFTER, TTL, Duration.ofSeconds(10), true))
+        .isEqualTo(1L);
 
     // when
     long result = client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true);
@@ -171,5 +175,25 @@ class RedisStringClientIntegrationTest {
     } finally {
       executor.shutdownNow();
     }
+  }
+
+  @Test
+  @DisplayName("DB 갱신 실패 시 신규 토큰 해시를 직전 토큰 해시로 복원한다")
+  void restoresPreviousTokenAfterFailure() {
+    // given
+    assertThat(client.setIfAbsent(KEY, OLD, TTL)).isTrue();
+
+    assertThat(client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true))
+        .isEqualTo(1L);
+
+    // when
+    boolean restored = client.restorePreviousIfCurrentMatches(KEY, NEXT, OLD, TTL);
+
+    // then
+    assertThat(restored).isTrue();
+    assertThat(redisTemplate.opsForValue().get(KEY)).isEqualTo(OLD);
+
+    assertThat(client.rotateWithHistory(KEY, OLD, AFTER, TTL, Duration.ofSeconds(10), true))
+        .isEqualTo(1L);
   }
 }

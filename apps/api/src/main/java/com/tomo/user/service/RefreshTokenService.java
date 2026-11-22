@@ -28,7 +28,7 @@ public class RefreshTokenService {
   private static final String REVOKED_VALUE = "__REVOKED__";
   private static final int RANDOM_BYTES = 32;
   private static final int MAX_TOKEN_LENGTH = 64;
-  private static final Duration REUSE_GRACE = Duration.ofSeconds(10);
+  static final Duration REUSE_GRACE = Duration.ofSeconds(10);
   private static final Pattern TOKEN_PATTERN =
       Pattern.compile("([1-9][0-9]*)\\.([A-Za-z0-9_-]{43})");
 
@@ -165,6 +165,30 @@ public class RefreshTokenService {
   public boolean revokeIfCurrentMatches(long sessionId, String newlyIssuedToken, Duration ttl) {
     return redisStringClient.revokeIfCurrentMatches(
         key(sessionId), hash(newlyIssuedToken), REVOKED_VALUE, ttl);
+  }
+
+  /**
+   * DB 트랜잭션 실패 시 Redis에 저장된 신규 토큰을 기존 토큰으로 복원한다.
+   *
+   * @param sessionId 로그인 세션 ID
+   * @param previousToken 기존 Refresh Token 원문
+   * @param newlyIssuedToken 새로 발급한 Refresh Token 원문
+   * @param previousExpiresAt DB 갱신 전 로그인 세션 만료 시각
+   * @return 조건부 복원에 성공하면 true
+   */
+  public boolean restorePreviousIfCurrentMatches(
+      long sessionId,
+      String previousToken,
+      String newlyIssuedToken,
+      LocalDateTime previousExpiresAt) {
+    Duration ttl = Duration.between(clock.instant(), previousExpiresAt.toInstant(ZoneOffset.UTC));
+
+    if (ttl.toMillis() < 1) {
+      return false;
+    }
+
+    return redisStringClient.restorePreviousIfCurrentMatches(
+        key(sessionId), hash(newlyIssuedToken), hash(previousToken), ttl);
   }
 
   /**

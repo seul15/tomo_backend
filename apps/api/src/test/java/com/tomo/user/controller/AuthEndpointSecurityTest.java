@@ -100,4 +100,27 @@ class AuthEndpointSecurityTest {
           Jwts.SIG.HS256.key().build(), Clock.fixed(NOW, ZoneOffset.UTC));
     }
   }
+
+  @Test
+  @DisplayName("이미 로그아웃한 세션의 Access Token으로 재요청하면 401을 반환한다")
+  void rejectsRepeatedLogout() throws Exception {
+    // given
+    String access = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
+
+    when(loginSessionService.isValidAccessSession("user-id", 10L)).thenReturn(true, false);
+
+    // when
+    // then
+    mockMvc
+        .perform(post("/api/v1/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true));
+
+    mockMvc
+        .perform(post("/api/v1/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
+
+    verify(loginSessionFacade).logout("user-id", 10L);
+  }
 }

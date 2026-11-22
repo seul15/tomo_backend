@@ -147,10 +147,10 @@ class LoginSessionFacadeTest {
             exception ->
                 assertThat(exception.getErrorCode())
                     .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
-    InOrder order = inOrder(refreshTokenService, loginSessionService, transactionManager);
-    order.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
+    InOrder order = inOrder(loginSessionService, transactionManager, refreshTokenService);
     order.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
     order.verify(transactionManager).commit(any(TransactionStatus.class));
+    order.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
     verify(transactionManager, never()).rollback(any(TransactionStatus.class));
   }
 
@@ -184,6 +184,7 @@ class LoginSessionFacadeTest {
     when(refreshTokenService.extractSessionId(OLD_REFRESH)).thenReturn(SESSION_ID);
     when(loginSessionService.requireRefreshSessionForUpdate(SESSION_ID)).thenReturn(session);
     when(session.getUserId()).thenReturn(USER_ID);
+    when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
     when(loginSessionService.isActiveUser(USER_ID)).thenReturn(true);
     when(refreshTokenService.rotate(OLD_REFRESH, SESSION_ID, REFRESH_TTL, true))
         .thenReturn(
@@ -200,7 +201,8 @@ class LoginSessionFacadeTest {
     assertThatThrownBy(() -> facade.refresh(OLD_REFRESH))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("DB commit failed");
-    verify(refreshTokenService).revokeIfCurrentMatches(SESSION_ID, NEW_REFRESH, REFRESH_TTL);
+    verify(refreshTokenService)
+        .restorePreviousIfCurrentMatches(SESSION_ID, OLD_REFRESH, NEW_REFRESH, EXPIRES_AT);
     verify(accessTokenProvider).issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL));
   }
 
@@ -216,29 +218,35 @@ class LoginSessionFacadeTest {
     facade.logout(USER_ID, SESSION_ID);
 
     // then
-    InOrder order = inOrder(loginSessionService, refreshTokenService, transactionManager);
+    InOrder order = inOrder(loginSessionService, transactionManager, refreshTokenService);
     order.verify(loginSessionService).requireOwnedSession(USER_ID, SESSION_ID);
-    order.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
     order.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
     order.verify(transactionManager).commit(any(TransactionStatus.class));
+    order.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
   }
 
   @Test
-  @DisplayName("Redis 폐기 실패 시 DB 세션을 삭제하지 않는다")
-  void rejectsLogoutWhenRedisFails() {
+  @DisplayName("DB 세션 삭제 후 Redis 폐기에 실패해도 로그아웃은 완료된다")
+  void completesLogoutWhenRedisRevocationFails() {
     // given
     when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID)).thenReturn(session);
     when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+
     doThrow(new IllegalStateException("Redis unavailable"))
         .when(refreshTokenService)
         .revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
 
     // when
+    facade.logout(USER_ID, SESSION_ID);
+
     // then
-    assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
-        .isInstanceOf(IllegalStateException.class);
-    verify(loginSessionService, never()).invalidateOwnedSession(USER_ID, SESSION_ID);
-    verify(transactionManager).rollback(any(TransactionStatus.class));
+    InOrder order = inOrder(loginSessionService, transactionManager, refreshTokenService);
+    order.verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
+    order.verify(transactionManager).commit(any(TransactionStatus.class));
+    order.verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
+
+    verify(transactionManager, never()).rollback(any(TransactionStatus.class));
   }
 
   @Test
@@ -283,6 +291,7 @@ class LoginSessionFacadeTest {
     when(refreshTokenService.extractSessionId(OLD_REFRESH)).thenReturn(SESSION_ID);
     when(loginSessionService.requireRefreshSessionForUpdate(SESSION_ID)).thenReturn(session);
     when(session.getUserId()).thenReturn(USER_ID);
+    when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
     when(loginSessionService.isActiveUser(USER_ID)).thenReturn(true);
     when(refreshTokenService.rotate(OLD_REFRESH, SESSION_ID, REFRESH_TTL, true))
         .thenReturn(
@@ -299,6 +308,25 @@ class LoginSessionFacadeTest {
     verify(loginSessionService).extendExpiration(SESSION_ID, EXPIRES_AT);
     verify(transactionManager).rollback(any(TransactionStatus.class));
     verify(transactionManager, never()).commit(any(TransactionStatus.class));
-    verify(refreshTokenService).revokeIfCurrentMatches(SESSION_ID, NEW_REFRESH, REFRESH_TTL);
+    verify(refreshTokenService)
+        .restorePreviousIfCurrentMatches(SESSION_ID, OLD_REFRESH, NEW_REFRESH, EXPIRES_AT);
+  }
+
+  @Test
+  @DisplayName("DB 세션 삭제에 실패하면 Redis Refresh Token을 폐기하지 않는다")
+  void doesNotRevokeRedisWhenSessionDeletionFails() {
+    // given
+    when(loginSessionService.requireOwnedSession(USER_ID, SESSION_ID)).thenReturn(session);
+    when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(false);
+
+    // when
+    // then
+    assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("로그아웃 대상 세션을 삭제하지 못했습니다.");
+
+    verify(transactionManager).rollback(any(TransactionStatus.class));
+    verifyNoInteractions(refreshTokenService);
   }
 }

@@ -75,8 +75,11 @@ public final class LoginSessionFacade {
    * @throws BusinessException 재발급이 거부되거나 계정 상태가 유효하지 않은 경우
    */
   public TokenRefreshResult refresh(String refreshToken) {
+    Instant requestStartedAt = clock.instant();
+
     long sessionId = refreshTokenService.extractSessionId(refreshToken);
     AtomicReference<String> newlyRotated = new AtomicReference<>();
+    AtomicReference<LocalDateTime> originalExpiresAt = new AtomicReference<>();
     RefreshTransactionResult transactionResult;
     try {
       transactionResult =
@@ -84,6 +87,7 @@ public final class LoginSessionFacade {
               status -> {
                 LoginSession session =
                     loginSessionService.requireRefreshSessionForUpdate(sessionId);
+                originalExpiresAt.set(session.getExpiresAt());
                 // 한 번 확인한 시각을 새 DB 만료 시각과 토큰 발급에 사용한다.
                 Instant now = clock.instant();
                 String userId = session.getUserId();
@@ -106,26 +110,41 @@ public final class LoginSessionFacade {
                           rotated.newToken(),
                           accessTokenTtl.toSeconds(),
                           refreshTokenTtl.toSeconds());
-                  return new RefreshTransactionResult(RefreshStatus.SUCCESS, tokens);
+                  return new RefreshTransactionResult(RefreshStatus.SUCCESS, tokens, null);
                 }
 
                 if (rotated.status() == RefreshTokenService.RotationStatus.PREVIOUS_AFTER_GRACE) {
-                  refreshTokenService.revokeBeforeSessionDeletion(
-                      sessionId, session.getExpiresAt());
+                  Duration waitingTime = Duration.between(requestStartedAt, now);
+
+                  if (waitingTime.compareTo(RefreshTokenService.REUSE_GRACE) >= 0) {
+                    LOG.warn("DB 잠금 대기 지연으로 직전 토큰 재사용 폐기를 보류. sessionId={}", sessionId);
+
+                    return new RefreshTransactionResult(RefreshStatus.INVALID, null, null);
+                  }
+
+                  LocalDateTime sessionExpiresAt = session.getExpiresAt();
+
                   if (!loginSessionService.invalidateOwnedSession(userId, sessionId)) {
                     throw new IllegalStateException("재사용 감지 후 로그인 세션 삭제에 실패했습니다.");
                   }
+
+                  return new RefreshTransactionResult(
+                      RefreshStatus.INVALID, null, sessionExpiresAt);
                 }
 
                 RefreshStatus statusResult =
                     rotated.status() == RefreshTokenService.RotationStatus.FORBIDDEN
                         ? RefreshStatus.FORBIDDEN
                         : RefreshStatus.INVALID;
-                return new RefreshTransactionResult(statusResult, null);
+                return new RefreshTransactionResult(statusResult, null, null);
               });
+
+      if (transactionResult != null && transactionResult.deletedSessionExpiresAt() != null) {
+        revokeAfterCommittedDeletion(sessionId, transactionResult.deletedSessionExpiresAt());
+      }
     } catch (RuntimeException exception) {
-      if (newlyRotated.get() != null) {
-        compensate(sessionId, newlyRotated.get(), exception);
+      if (newlyRotated.get() != null && originalExpiresAt.get() != null) {
+        compensate(sessionId, refreshToken, newlyRotated.get(), originalExpiresAt.get(), exception);
       }
       throw exception;
     }
@@ -140,42 +159,80 @@ public final class LoginSessionFacade {
   }
 
   /**
-   * Refresh Token 폐기 후 본인 로그인 세션을 삭제한다.
+   * DB 로그인 세션을 삭제한 뒤 Redis Refresh Token을 폐기한다.
    *
    * @param userId 검증된 사용자 ID
    * @param sessionId 로그인 세션 ID
    * @throws BusinessException 요청 또는 세션 소유권이 유효하지 않은 경우
+   * @throws IllegalStateException 로그인 세션 삭제에 실패하거나 트랜잭션 결과가 없는 경우
    */
   public void logout(String userId, long sessionId) {
-    transactionTemplate.executeWithoutResult(
-        status -> {
-          LoginSession session = loginSessionService.requireOwnedSession(userId, sessionId);
-          refreshTokenService.revokeBeforeSessionDeletion(sessionId, session.getExpiresAt());
-          if (!loginSessionService.invalidateOwnedSession(userId, sessionId)) {
-            throw new IllegalStateException("로그아웃 대상 세션을 삭제하지 못했습니다.");
-          }
-        });
+    LocalDateTime expiresAt =
+        transactionTemplate.execute(
+            status -> {
+              LoginSession session = loginSessionService.requireOwnedSession(userId, sessionId);
+
+              LocalDateTime sessionExpiresAt = session.getExpiresAt();
+
+              if (!loginSessionService.invalidateOwnedSession(userId, sessionId)) {
+                throw new IllegalStateException("로그아웃 대상 세션을 삭제하지 못했습니다.");
+              }
+
+              return sessionExpiresAt;
+            });
+
+    if (expiresAt == null) {
+      throw new IllegalStateException("로그아웃 트랜잭션 결과가 없습니다.");
+    }
+
+    revokeAfterCommittedDeletion(sessionId, expiresAt);
+
     LOG.info("로그아웃 완료. sessionId={}", sessionId);
   }
 
   /**
-   * 재발급 처리 실패 시 새 Refresh Token을 조건부 폐기하여 상태 불일치를 줄인다.
+   * DB 세션 삭제가 커밋된 후 Redis의 Refresh Token을 폐기한다.
    *
-   * <p>Redis에 저장된 현재 토큰이 새로 발급한 토큰과 일치할 때만 폐기한다. 보상 처리 자체가 실패하면 원래 예외에 억제 예외로 연결하여 실패 원인을 보존한다.
+   * <p>Redis 폐기에 실패하더라도 DB 세션이 없으므로 인증은 거부된다.
+   *
+   * @param sessionId 삭제된 로그인 세션 ID
+   * @param expiresAt 삭제 전 로그인 세션의 만료 시각
+   */
+  private void revokeAfterCommittedDeletion(long sessionId, LocalDateTime expiresAt) {
+    try {
+      refreshTokenService.revokeBeforeSessionDeletion(sessionId, expiresAt);
+    } catch (RuntimeException exception) {
+      LOG.error("DB 세션 삭제 후 Redis Refresh Token 폐기 실패. sessionId={}", sessionId, exception);
+    }
+  }
+
+  /**
+   * 재발급 트랜잭션 실패 시 Redis 토큰 상태를 이전 값으로 복원한다.
+   *
+   * <p>현재 토큰과 직전 토큰의 해시가 예상값에 모두 일치할 때만 복원한다.
    *
    * @param sessionId 로그인 세션 ID
-   * @param newlyRotatedToken 폐기 여부를 확인할 신규 Refresh Token
-   * @param original 재발급 처리 중 발생한 원래 예외
+   * @param previousToken 기존 Refresh Token
+   * @param newlyRotatedToken 교체된 신규 Refresh Token
+   * @param previousExpiresAt 갱신 전 DB 세션 만료 시각
+   * @param original 재발급 중 발생한 원래 예외
    */
-  private void compensate(long sessionId, String newlyRotatedToken, RuntimeException original) {
+  private void compensate(
+      long sessionId,
+      String previousToken,
+      String newlyRotatedToken,
+      LocalDateTime previousExpiresAt,
+      RuntimeException original) {
     try {
-      boolean revoked =
-          refreshTokenService.revokeIfCurrentMatches(sessionId, newlyRotatedToken, refreshTokenTtl);
-      if (!revoked) {
-        LOG.error("재발급 실패 후 Redis 보상 폐기가 적용되지 않음. sessionId={}", sessionId);
+      boolean restored =
+          refreshTokenService.restorePreviousIfCurrentMatches(
+              sessionId, previousToken, newlyRotatedToken, previousExpiresAt);
+
+      if (!restored) {
+        LOG.error("재발급 실패 후 Redis 토큰 복원 미적용. sessionId={}", sessionId);
       }
     } catch (RuntimeException compensationFailure) {
-      LOG.error("Redis 보상 폐기 실패. sessionId={}", sessionId, compensationFailure);
+      LOG.error("Redis 토큰 복원 실패. sessionId={}", sessionId, compensationFailure);
       original.addSuppressed(compensationFailure);
     }
   }
@@ -186,5 +243,6 @@ public final class LoginSessionFacade {
     FORBIDDEN
   }
 
-  private record RefreshTransactionResult(RefreshStatus status, TokenRefreshResult tokens) {}
+  private record RefreshTransactionResult(
+      RefreshStatus status, TokenRefreshResult tokens, LocalDateTime deletedSessionExpiresAt) {}
 }
