@@ -1,7 +1,7 @@
 package com.tomo.common.auth.token;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
@@ -75,7 +75,7 @@ public final class SignupTokenProvider {
    */
   public String verify(String token) {
     if (token == null || token.isBlank()) {
-      throw new BusinessException(CommonErrorCode.INVALID_SIGNUP_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_SIGNUP_TOKEN);
     }
     try {
       Jws<Claims> parsed =
@@ -92,11 +92,11 @@ public final class SignupTokenProvider {
           || claims.getIssuedAt() == null
           || claims.getExpiration() == null
           || claims.getIssuedAt().after(Date.from(clock.instant()))) {
-        throw new BusinessException(CommonErrorCode.INVALID_SIGNUP_TOKEN);
+        throw new BusinessException(AuthErrorCode.INVALID_SIGNUP_TOKEN);
       }
       return claims.getSubject();
     } catch (JwtException | IllegalArgumentException exception) {
-      throw new BusinessException(CommonErrorCode.INVALID_SIGNUP_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_SIGNUP_TOKEN);
     }
   }
 }

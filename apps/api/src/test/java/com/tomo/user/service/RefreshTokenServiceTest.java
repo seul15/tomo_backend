@@ -8,9 +8,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.integration.redis.RedisStringClient;
-import com.tomo.user.exception.UserErrorCode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -197,7 +197,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
     verifyNoInteractions(redisStringClient);
   }
@@ -215,7 +215,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
     verifyNoInteractions(redisStringClient);
   }
@@ -233,7 +233,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
     verifyNoInteractions(redisStringClient);
   }
@@ -254,7 +254,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
   }
 
   @Test

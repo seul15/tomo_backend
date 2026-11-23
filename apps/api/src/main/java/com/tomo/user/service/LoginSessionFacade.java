@@ -1,9 +1,9 @@
 package com.tomo.user.service;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.user.entity.LoginSession;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.service.model.TokenRefreshResult;
 import java.time.Clock;
 import java.time.Duration;
@@ -94,6 +94,14 @@ public final class LoginSessionFacade {
         sessionId, () -> refreshUnderLock(sessionId, refreshToken, requestStartedAt));
   }
 
+  /**
+   * 세션별 분산 락이 확보된 상태에서 Refresh Token을 검증하고 교체한다.
+   *
+   * @param sessionId 로그인 세션 ID
+   * @param refreshToken 요청 Refresh Token
+   * @param requestStartedAt 요청 시작 시각
+   * @return 새 Access/Refresh Token 쌍
+   */
   private TokenRefreshResult refreshUnderLock(
       long sessionId, String refreshToken, Instant requestStartedAt) {
     RefreshSessionSnapshot snapshot =
@@ -124,7 +132,7 @@ public final class LoginSessionFacade {
               LoginSession latest = loginSessionService.requireRefreshSessionForUpdate(sessionId);
               if (!snapshot.userId().equals(latest.getUserId())
                   || !loginSessionService.isActiveUser(snapshot.userId())) {
-                throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+                throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
               }
               loginSessionService.extendExpiration(sessionId, nextExpiresAt);
             });
@@ -144,7 +152,7 @@ public final class LoginSessionFacade {
       Duration waitingTime = Duration.between(requestStartedAt, now);
       if (waitingTime.compareTo(RefreshTokenService.REUSE_GRACE) >= 0) {
         LOG.warn("처리 지연으로 직전 토큰 폐기 보류. sessionId={}", sessionId);
-        throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+        throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
       }
 
       LocalDateTime deletedExpiresAt =
@@ -152,7 +160,7 @@ public final class LoginSessionFacade {
               status -> {
                 LoginSession latest = loginSessionService.requireRefreshSessionForUpdate(sessionId);
                 if (!snapshot.userId().equals(latest.getUserId())) {
-                  throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+                  throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
                 }
                 LocalDateTime oldExpiration = latest.getExpiresAt();
                 if (!loginSessionService.invalidateOwnedSession(snapshot.userId(), sessionId)) {
@@ -164,13 +172,13 @@ public final class LoginSessionFacade {
         throw new IllegalStateException("세션 삭제 결과가 없습니다.");
       }
       revokeAfterCommittedDeletion(sessionId, deletedExpiresAt);
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
 
     if (rotated.status() == RefreshTokenService.RotationStatus.FORBIDDEN) {
-      throw new BusinessException(UserErrorCode.TOKEN_REFRESH_FORBIDDEN);
+      throw new BusinessException(AuthErrorCode.TOKEN_REFRESH_FORBIDDEN);
     }
-    throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+    throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
   }
 
   /**
@@ -252,6 +260,14 @@ public final class LoginSessionFacade {
     }
   }
 
+  /**
+   * 동일 로그인 세션의 재발급과 로그아웃을 분산 락으로 직렬화한다.
+   *
+   * @param sessionId 로그인 세션 ID
+   * @param work 락을 획득한 상태에서 실행할 작업
+   * @param <T> 작업 결과 타입
+   * @return 작업 실행 결과
+   */
   private <T> T withSessionLock(long sessionId, Supplier<T> work) {
     RLock lock = redissonClient.getLock(SESSION_LOCK_PREFIX + sessionId);
     boolean acquired;
@@ -276,6 +292,13 @@ public final class LoginSessionFacade {
     }
   }
 
+  /**
+   * 첫 번째 DB 트랜잭션에서 조회한 로그인 세션 정보.
+   *
+   * @param userId 세션 소유자 ID
+   * @param expiresAt 기존 세션 만료 시각
+   * @param activeUser ACTIVE 계정 여부
+   */
   private record RefreshSessionSnapshot(
       String userId, LocalDateTime expiresAt, boolean activeUser) {}
 }

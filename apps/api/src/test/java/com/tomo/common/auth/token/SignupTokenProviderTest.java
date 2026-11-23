@@ -3,8 +3,8 @@ package com.tomo.common.auth.token;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import io.jsonwebtoken.Jwts;
 import java.time.Clock;
 import java.time.Duration;
@@ -50,8 +50,7 @@ class SignupTokenProviderTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_SIGNUP_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
   }
 
   @Test
@@ -71,8 +70,7 @@ class SignupTokenProviderTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_SIGNUP_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
   }
 
   @Test
@@ -91,13 +89,11 @@ class SignupTokenProviderTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_ACCESS_TOKEN));
     assertThatThrownBy(() -> signup.verify(accessJwt))
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_SIGNUP_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
   }
 }

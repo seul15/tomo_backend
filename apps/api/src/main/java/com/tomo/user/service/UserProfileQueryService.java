@@ -1,5 +1,6 @@
 package com.tomo.user.service;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
@@ -39,7 +40,7 @@ public class UserProfileQueryService {
   public UserProfileDetails getActiveUserProfile(String userId) {
     if (userId == null || userId.isBlank()) {
       LOG.debug("프로필 조회 거부. 인증 사용자 ID 없음");
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     User user =

@@ -1,11 +1,11 @@
 package com.tomo.user.service;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -90,15 +90,15 @@ public class LoginSessionService implements AccessSessionValidator {
     LoginSession session =
         loginSessionRepository
             .findByIdForUpdate(sessionId)
-            .orElseThrow(() -> new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN));
+            .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_ACCESS_TOKEN));
 
     if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     if (!session.getExpiresAt().isAfter(now)) {
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     return session;
@@ -130,17 +130,17 @@ public class LoginSessionService implements AccessSessionValidator {
   @Transactional(propagation = Propagation.MANDATORY)
   public LoginSession requireRefreshSessionForUpdate(long sessionId) {
     if (sessionId <= 0) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
 
     LoginSession session =
         loginSessionRepository
             .findByIdForUpdate(sessionId)
-            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN));
+            .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
     LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     if (!session.getExpiresAt().isAfter(now)) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     return session;
   }
@@ -169,11 +169,11 @@ public class LoginSessionService implements AccessSessionValidator {
   @Transactional(propagation = Propagation.MANDATORY)
   public void extendExpiration(long sessionId, LocalDateTime newExpiresAt) {
     if (sessionId <= 0 || newExpiresAt == null) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     int updated = loginSessionRepository.updateExpiresAt(sessionId, newExpiresAt);
     if (updated != 1) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
   }
 }

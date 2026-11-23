@@ -2,6 +2,7 @@ package com.tomo.common.auth.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.auth.token.AccessTokenProvider;
@@ -174,6 +175,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     objectWriter.writeValue(
         response.getOutputStream(),
-        ErrorResponse.from(CommonErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
+        ErrorResponse.from(AuthErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
   }
 }

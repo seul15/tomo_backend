@@ -14,11 +14,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.LoginSession;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.service.model.TokenRefreshResult;
 import java.time.Clock;
 import java.time.Duration;
@@ -131,7 +131,7 @@ class LoginSessionFacadeTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
     verify(transactionManager).commit(any(TransactionStatus.class));
     verify(loginSessionService, never()).invalidateOwnedSession(USER_ID, SESSION_ID);
     verifyNoInteractions(accessTokenProvider);
@@ -159,7 +159,7 @@ class LoginSessionFacadeTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
     InOrder order = inOrder(loginSessionService, transactionManager, refreshTokenService);
 
     order.verify(transactionManager).commit(any(TransactionStatus.class));
@@ -189,7 +189,7 @@ class LoginSessionFacadeTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.TOKEN_REFRESH_FORBIDDEN));
+                    .isEqualTo(AuthErrorCode.TOKEN_REFRESH_FORBIDDEN));
     verify(loginSessionService, never()).invalidateOwnedSession(USER_ID, SESSION_ID);
   }
 

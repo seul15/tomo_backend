@@ -1,12 +1,11 @@
 package com.tomo.user.controller;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.common.response.CommonResponse;
 import com.tomo.user.controller.docs.AuthApiDocs;
 import com.tomo.user.dto.response.AuthRefreshResponse;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.service.LoginSessionFacade;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.regex.Matcher;
@@ -75,7 +74,7 @@ public class AuthController implements AuthApiDocs {
         || !(authentication.getDetails() instanceof AccessTokenClaims claims)
         || userId == null
         || !userId.equals(claims.userId())) {
-      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_ACCESS_TOKEN);
     }
     loginSessionFacade.logout(userId, claims.loginSessionId());
     return CommonResponse.successWithoutData(request.getRequestId());
@@ -90,11 +89,11 @@ public class AuthController implements AuthApiDocs {
    */
   private static String requireRefreshBearerToken(String authorization) {
     if (authorization == null) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     Matcher matcher = BEARER_PATTERN.matcher(authorization);
     if (!matcher.matches()) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     return matcher.group(1);
   }

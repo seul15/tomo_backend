@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
@@ -107,8 +108,7 @@ class UserProfileQueryServiceTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_ACCESS_TOKEN));
 
     verifyNoInteractions(userRepository);
   }

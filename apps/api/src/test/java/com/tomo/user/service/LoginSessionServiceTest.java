@@ -6,12 +6,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.entity.User;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import java.time.Clock;
@@ -182,7 +181,7 @@ class LoginSessionServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
   }
 
   @Test
@@ -243,7 +242,6 @@ class LoginSessionServiceTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_ACCESS_TOKEN));
   }
 }

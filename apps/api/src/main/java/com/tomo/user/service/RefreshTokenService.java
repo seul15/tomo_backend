@@ -1,8 +1,8 @@
 package com.tomo.user.service;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.integration.redis.RedisStringClient;
-import com.tomo.user.exception.UserErrorCode;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -59,16 +59,16 @@ public class RefreshTokenService {
    */
   public long extractSessionId(String token) {
     if (token == null || token.length() > MAX_TOKEN_LENGTH) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     Matcher matcher = TOKEN_PATTERN.matcher(token);
     if (!matcher.matches()) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     try {
       return Long.parseLong(matcher.group(1));
     } catch (NumberFormatException exception) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
   }
 
@@ -84,16 +84,16 @@ public class RefreshTokenService {
    */
   public String issue(long sessionId, LocalDateTime expiresAt) {
     if (sessionId <= 0 || expiresAt == null) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));
     if (ttl.toMillis() < 1) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
 
     String token = newToken(sessionId);
     if (!redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl)) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     LOG.info("Refresh Token 최초 발급. sessionId={}", sessionId);
     return token;
@@ -111,7 +111,7 @@ public class RefreshTokenService {
    */
   public Rotation rotate(String token, long sessionId, Duration ttl, boolean activeUser) {
     if (extractSessionId(token) != sessionId || sessionId <= 0) {
-      throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
     String next = newToken(sessionId);
     long status =
@@ -233,12 +233,22 @@ public class RefreshTokenService {
     }
   }
 
-  /** Refresh Token의 원자적 교체 판정. */
+  /** Refresh Token 교체 및 재사용 여부를 나타내는 상태. */
   public enum RotationStatus {
+
+    /** 현재 Refresh Token 검증에 성공하여 신규 토큰으로 교체한 상태. */
     ROTATED,
+
+    /** 직전 Refresh Token이 교체 후 10초 이내에 재사용되어 재발급만 거부하는 상태. */
     PREVIOUS_WITHIN_GRACE,
+
+    /** 직전 Refresh Token이 교체 후 10초를 초과하여 재사용되어 세션 폐기 대상이 된 상태. */
     PREVIOUS_AFTER_GRACE,
+
+    /** 현재 Refresh Token은 유효하지만 사용자 계정이 비활성화되어 재발급이 금지된 상태. */
     FORBIDDEN,
+
+    /** Refresh Token이 없거나 현재 토큰 및 직전 토큰과 일치하지 않는 상태. */
     INVALID
   }
 

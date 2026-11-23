@@ -3,12 +3,12 @@ package com.tomo.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.integration.redis.RedisStringClient;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.entity.User;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import com.tomo.user.service.model.TokenRefreshResult;
@@ -197,7 +197,7 @@ class LoginSessionConcurrencyIntegrationTest {
       assertThat(List.of(firstResult, secondResult))
           .filteredOn(value -> value instanceof TokenRefreshResult)
           .hasSize(1);
-      assertThat(List.of(firstResult, secondResult)).contains(UserErrorCode.INVALID_REFRESH_TOKEN);
+      assertThat(List.of(firstResult, secondResult)).contains(AuthErrorCode.INVALID_REFRESH_TOKEN);
       LocalDateTime expectedExpiration =
           LocalDateTime.ofInstant(clock.instant().plus(Duration.ofDays(7)), ZoneOffset.UTC);
       assertThat(loginSessionRepository.findById(sessionId).orElseThrow().getExpiresAt())
@@ -229,7 +229,7 @@ class LoginSessionConcurrencyIntegrationTest {
                   facade.refresh(initialRefreshToken);
                   return "REFRESHED";
                 } catch (BusinessException exception) {
-                  if (exception.getErrorCode() != UserErrorCode.INVALID_REFRESH_TOKEN) {
+                  if (exception.getErrorCode() != AuthErrorCode.INVALID_REFRESH_TOKEN) {
                     throw exception;
                   }
                   return "REJECTED";
@@ -279,7 +279,7 @@ class LoginSessionConcurrencyIntegrationTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
     assertThat(loginSessionRepository.findById(sessionId)).isEmpty();
     assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("__REVOKED__");
   }
@@ -299,7 +299,7 @@ class LoginSessionConcurrencyIntegrationTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
 
     assertThat(loginSessionRepository.findById(sessionId)).isPresent();
 

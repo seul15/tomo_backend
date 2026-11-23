@@ -1,6 +1,7 @@
 package com.tomo.common.auth.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.filter.JwtAuthenticationFilter;
 import com.tomo.common.auth.session.AccessSessionValidator;
 import com.tomo.common.auth.token.AccessTokenProvider;
@@ -45,7 +46,7 @@ public class SecurityConfig {
 
       objectMapper.writeValue(
           response.getOutputStream(),
-          ErrorResponse.from(CommonErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
+          ErrorResponse.from(AuthErrorCode.INVALID_ACCESS_TOKEN, request.getRequestId()));
     };
   }
 

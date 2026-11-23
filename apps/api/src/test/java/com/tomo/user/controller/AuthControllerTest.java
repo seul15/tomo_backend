@@ -7,12 +7,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.exception.BusinessException;
-import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.common.response.CommonResponse;
 import com.tomo.user.dto.response.AuthRefreshResponse;
-import com.tomo.user.exception.UserErrorCode;
 import com.tomo.user.service.LoginSessionFacade;
 import com.tomo.user.service.model.TokenRefreshResult;
 import jakarta.servlet.http.HttpServletRequest;
@@ -61,7 +60,7 @@ class AuthControllerTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
     verifyNoInteractions(loginSessionFacade);
   }
 
@@ -99,8 +98,7 @@ class AuthControllerTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode())
-                    .isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
+                assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_ACCESS_TOKEN));
     verifyNoInteractions(loginSessionFacade);
   }
 }
