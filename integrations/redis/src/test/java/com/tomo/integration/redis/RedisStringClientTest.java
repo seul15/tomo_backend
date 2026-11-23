@@ -89,7 +89,7 @@ class RedisStringClientTest {
     // given
     when(redisTemplate.execute(
             org.mockito.ArgumentMatchers.<RedisScript<Long>>any(),
-            eq(List.of("auth:refresh:session:10")),
+            eq(List.of("auth:refresh:session:10", "auth:refresh:session:10:history")),
             eq("a".repeat(64)),
             eq("b".repeat(64)),
             eq("604800000"),
@@ -118,7 +118,7 @@ class RedisStringClientTest {
     // given
     when(redisTemplate.execute(
             org.mockito.ArgumentMatchers.<RedisScript<Long>>any(),
-            eq(List.of("auth:refresh:session:10")),
+            eq(List.of("auth:refresh:session:10", "auth:refresh:session:10:history")),
             eq("a".repeat(64)),
             eq("__REVOKED__"),
             eq("604800000")))

@@ -32,6 +32,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -60,6 +63,7 @@ class LoginSessionConcurrencyIntegrationTest {
 
   private static LettuceConnectionFactory connectionFactory;
   private static StringRedisTemplate redisTemplate;
+  private static RedissonClient lockClient;
 
   @Autowired private EntityManager entityManager;
   @Autowired private UserRepository userRepository;
@@ -79,14 +83,24 @@ class LoginSessionConcurrencyIntegrationTest {
   static void initializeRedis() {
     RedisStandaloneConfiguration redisConfiguration =
         new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379));
+
     connectionFactory = new LettuceConnectionFactory(redisConfiguration);
     connectionFactory.afterPropertiesSet();
+
     redisTemplate = new StringRedisTemplate(connectionFactory);
     redisTemplate.afterPropertiesSet();
+
+    Config config = new Config();
+    config
+        .useSingleServer()
+        .setAddress("redis://" + REDIS.getHost() + ":" + REDIS.getMappedPort(6379));
+
+    lockClient = Redisson.create(config);
   }
 
   @AfterAll
   static void closeRedis() {
+    lockClient.shutdown();
     connectionFactory.destroy();
   }
 
@@ -106,6 +120,7 @@ class LoginSessionConcurrencyIntegrationTest {
             accessTokenProvider,
             clock,
             transactionManager,
+            lockClient,
             Duration.ofHours(1),
             Duration.ofDays(7));
 
@@ -133,7 +148,8 @@ class LoginSessionConcurrencyIntegrationTest {
   @AfterEach
   void removeTestState() {
     if (sessionId > 0) {
-      redisTemplate.delete("auth:refresh:session:" + sessionId);
+      String key = "auth:refresh:session:" + sessionId;
+      redisTemplate.delete(List.of(key, key + ":history"));
     }
     if (userId != null) {
       transactionTemplate.executeWithoutResult(
@@ -243,14 +259,18 @@ class LoginSessionConcurrencyIntegrationTest {
     // given
     facade.refresh(initialRefreshToken);
     String key = "auth:refresh:session:" + sessionId;
-    String stored = redisTemplate.opsForValue().get(key);
+    String historyKey = key + ":history";
+    String stored = redisTemplate.opsForValue().get(historyKey);
     assertThat(stored).isNotNull();
     String[] segments = stored.split(":");
     assertThat(segments).hasSize(3);
     long oldRotationTime = System.currentTimeMillis() - Duration.ofMinutes(5).toMillis();
     redisTemplate
         .opsForValue()
-        .set(key, segments[0] + ":" + segments[1] + ":" + oldRotationTime, Duration.ofDays(7));
+        .set(
+            historyKey,
+            segments[0] + ":" + segments[1] + ":" + oldRotationTime,
+            Duration.ofDays(7));
 
     // when
     // then
@@ -262,5 +282,29 @@ class LoginSessionConcurrencyIntegrationTest {
                     .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
     assertThat(loginSessionRepository.findById(sessionId)).isEmpty();
     assertThat(redisTemplate.opsForValue().get(key)).isEqualTo("__REVOKED__");
+  }
+
+  @Test
+  @DisplayName("10초 이내 직전 Refresh Token 재사용은 거부하되 로그인 세션을 유지한다")
+  void rejectsPreviousWithinGraceWithoutRevokingSession() {
+    // given
+    TokenRefreshResult refreshed = facade.refresh(initialRefreshToken);
+
+    assertThat(refreshed.refreshToken()).isNotEqualTo(initialRefreshToken);
+
+    // when
+    // then
+    assertThatThrownBy(() -> facade.refresh(initialRefreshToken))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+
+    assertThat(loginSessionRepository.findById(sessionId)).isPresent();
+
+    String key = "auth:refresh:session:" + sessionId;
+
+    assertThat(redisTemplate.opsForValue().get(key)).isNotNull().isNotEqualTo("__REVOKED__");
   }
 }

@@ -93,7 +93,7 @@ public class LoginSessionService implements AccessSessionValidator {
             .orElseThrow(() -> new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN));
 
     if (!userId.equals(session.getUserId())) {
-      throw new BusinessException(UserErrorCode.LOGOUT_FORBIDDEN);
+      throw new BusinessException(CommonErrorCode.INVALID_ACCESS_TOKEN);
     }
 
     LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);

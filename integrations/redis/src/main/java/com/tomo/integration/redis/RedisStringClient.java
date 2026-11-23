@@ -12,43 +12,78 @@ import org.springframework.stereotype.Component;
 public class RedisStringClient {
   private static final DefaultRedisScript<Long> ROTATE_WITH_HISTORY_SCRIPT =
       new DefaultRedisScript<>(
-          "local value = redis.call('GET', KEYS[1]); "
-              + "if not value then return 0 end; "
-              + "local current, previous, changedAt = string.match(value, "
-              + "'^([0-9a-f]+):([0-9a-f]+):(%d+)$'); "
-              + "if not current then current = value end; "
-              + "local currentTime = redis.call('TIME'); "
-              + "local now = tonumber(currentTime[1])*1000 + math.floor(tonumber(currentTime[2])/1000); "
-              + "if current == ARGV[1] then "
-              + "if ARGV[5] == '0' then return 4 end; "
-              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2] .. ':' .. current .. ':' .. now); "
-              + "return 1 end; "
-              + "if previous and previous == ARGV[1] then "
-              + "if now - tonumber(changedAt) <= tonumber(ARGV[4]) then return 2 end; "
-              + "return 3 end; "
-              + "return 0",
+          """
+                  local current = redis.call('GET', KEYS[1])
+                  if not current then return 0 end
+
+                  -- 이전 단일 키 복합 문자열에서 새로운 2키 구조로 이동
+                  local legacyCurrent = string.match(current, '^([0-9a-f]+):[0-9a-f]+:%d+$')
+                  if legacyCurrent then
+                    local remaining = redis.call('PTTL', KEYS[1])
+                    if remaining <= 0 then return 0 end
+                    redis.call('PSETEX', KEYS[1], remaining, legacyCurrent)
+                    redis.call('PSETEX', KEYS[2], remaining, current)
+                    current = legacyCurrent
+                  end
+
+                  local history = redis.call('GET', KEYS[2])
+                  local trackedCurrent, trackedPrevious, changedAt
+                  if history then
+                    trackedCurrent, trackedPrevious, changedAt =
+                        string.match(history, '^([0-9a-f]+):([0-9a-f]+):(%d+)$')
+                  end
+
+                  local currentTime = redis.call('TIME')
+                  local now = tonumber(currentTime[1]) * 1000
+                      + math.floor(tonumber(currentTime[2]) / 1000)
+
+                  if current == ARGV[1] then
+                    if ARGV[5] == '0' then return 4 end
+                    redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2])
+                    redis.call('PSETEX', KEYS[2], ARGV[3],
+                        ARGV[2] .. ':' .. current .. ':' .. now)
+                    return 1
+                  end
+
+                  -- 구버전이 현재 토큰을 교체해 이력이 낡았으면 재사용 감지에 사용하지 않음
+                  if trackedCurrent == current and trackedPrevious == ARGV[1] then
+                    if now - tonumber(changedAt) <= tonumber(ARGV[4]) then return 2 end
+                    return 3
+                  end
+                  return 0
+                  """,
           Long.class);
 
   private static final DefaultRedisScript<Long> REVOKE_IF_CURRENT_SCRIPT =
       new DefaultRedisScript<>(
-          "local value = redis.call('GET', KEYS[1]); "
-              + "if not value then return 0 end; "
-              + "local current = string.match(value, '^([0-9a-f]+):') or value; "
-              + "if current == ARGV[1] then "
-              + "redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2]); return 1 end; "
-              + "return 0",
+          """
+                  local raw = redis.call('GET', KEYS[1])
+                  if not raw then return 0 end
+                  local current = string.match(raw, '^([0-9a-f]+):') or raw
+                  if current ~= ARGV[1] then return 0 end
+                  redis.call('PSETEX', KEYS[1], ARGV[3], ARGV[2])
+                  redis.call('DEL', KEYS[2])
+                  return 1
+                  """,
           Long.class);
 
   private static final DefaultRedisScript<Long> RESTORE_PREVIOUS_IF_CURRENT_SCRIPT =
       new DefaultRedisScript<>(
-          "local value = redis.call('GET', KEYS[1]); "
-              + "if not value then return 0 end; "
-              + "local current, previous = string.match(value, "
-              + "'^([0-9a-f]+):([0-9a-f]+):%d+$'); "
-              + "if current == ARGV[1] and previous == ARGV[2] then "
-              + "redis.call('PSETEX', KEYS[1], ARGV[3], previous); "
-              + "return 1 end; "
-              + "return 0",
+          """
+                  local raw = redis.call('GET', KEYS[1])
+                  if not raw then return 0 end
+                  local current = string.match(raw, '^([0-9a-f]+):') or raw
+                  if current ~= ARGV[1] then return 0 end
+
+                  local history = redis.call('GET', KEYS[2]) or raw
+                  local historyCurrent, previous =
+                      string.match(history, '^([0-9a-f]+):([0-9a-f]+):%d+$')
+                  if historyCurrent ~= ARGV[1] or previous ~= ARGV[2] then return 0 end
+
+                  redis.call('PSETEX', KEYS[1], ARGV[3], previous)
+                  redis.call('DEL', KEYS[2])
+                  return 1
+                  """,
           Long.class);
 
   private final StringRedisTemplate redisTemplate;
@@ -134,7 +169,7 @@ public class RedisStringClient {
     Long result =
         redisTemplate.execute(
             ROTATE_WITH_HISTORY_SCRIPT,
-            List.of(key),
+            List.of(key, historyKey(key)),
             expectedHash,
             nextHash,
             Long.toString(ttlMillis),
@@ -162,7 +197,7 @@ public class RedisStringClient {
     Long result =
         redisTemplate.execute(
             REVOKE_IF_CURRENT_SCRIPT,
-            List.of(key),
+            List.of(key, historyKey(key)),
             expectedHash,
             revokedValue,
             Long.toString(ttlMillis));
@@ -185,7 +220,7 @@ public class RedisStringClient {
     Long result =
         redisTemplate.execute(
             RESTORE_PREVIOUS_IF_CURRENT_SCRIPT,
-            List.of(key),
+            List.of(key, historyKey(key)),
             expectedCurrentHash,
             previousHash,
             Long.toString(ttlMillis));
@@ -205,5 +240,9 @@ public class RedisStringClient {
       throw new IllegalArgumentException("Redis TTL은 1밀리초 이상이어야 합니다.");
     }
     return ttl.toMillis();
+  }
+
+  private static String historyKey(String key) {
+    return key + ":history";
   }
 }

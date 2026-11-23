@@ -207,29 +207,6 @@ public interface AuthApiDocs {
                                             }
                                             """))),
     @ApiResponse(
-        responseCode = "403",
-        description = "다른 사용자의 로그인 세션을 종료할 권한 없음",
-        content =
-            @Content(
-                mediaType = MediaType.APPLICATION_JSON_VALUE,
-                schema = @Schema(implementation = ErrorResponse.class),
-                examples =
-                    @ExampleObject(
-                        value =
-                            """
-                                            {
-                                              "success": false,
-                                              "error": {
-                                                "code": "LOGOUT_FORBIDDEN",
-                                                "message": "다른 사용자의 로그인 세션을 종료할 권한이 없습니다."
-                                              },
-                                              "meta": {
-                                                "requestId": "example-request-id",
-                                                "timestamp": "2026-11-23T00:00:00Z"
-                                              }
-                                            }
-                                            """))),
-    @ApiResponse(
         responseCode = "500",
         description = "서버 내부 오류",
         content =

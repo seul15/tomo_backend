@@ -51,7 +51,7 @@ class RedisStringClientIntegrationTest {
 
   @AfterEach
   void clearKey() {
-    redisTemplate.delete(KEY);
+    redisTemplate.delete(List.of(KEY, KEY + ":history"));
   }
 
   @AfterAll
@@ -72,7 +72,9 @@ class RedisStringClientIntegrationTest {
     // then
     assertThat(first).isEqualTo(1L);
     assertThat(retry).isEqualTo(2L);
-    assertThat(redisTemplate.opsForValue().get(KEY)).startsWith(NEXT + ":" + OLD + ":");
+    assertThat(redisTemplate.opsForValue().get(KEY)).isEqualTo(NEXT);
+    assertThat(redisTemplate.opsForValue().get(KEY + ":history"))
+        .startsWith(NEXT + ":" + OLD + ":");
     Long remainingSeconds = redisTemplate.getExpire(KEY, TimeUnit.SECONDS);
     assertThat(remainingSeconds).isNotNull().isPositive().isLessThanOrEqualTo(120L);
   }
@@ -195,5 +197,34 @@ class RedisStringClientIntegrationTest {
 
     assertThat(client.rotateWithHistory(KEY, OLD, AFTER, TTL, Duration.ofSeconds(10), true))
         .isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("구버전 복합 해시를 기존 TTL로 변환하고 새 버전에서 교체한다")
+  void migratesLegacyCompositeValue() {
+    assertThat(client.setIfAbsent(KEY, NEXT + ":" + OLD + ":1", TTL)).isTrue();
+
+    long result = client.rotateWithHistory(KEY, NEXT, AFTER, TTL, Duration.ofSeconds(10), true);
+
+    assertThat(result).isEqualTo(1L);
+    assertThat(redisTemplate.opsForValue().get(KEY)).isEqualTo(AFTER);
+    assertThat(redisTemplate.opsForValue().get(KEY + ":history"))
+        .startsWith(AFTER + ":" + NEXT + ":");
+  }
+
+  @Test
+  @DisplayName("기본 키가 이전 인스턴스에 의해 변경되면 오래된 이력으로 폐기하지 않는다")
+  void ignoresStaleHistoryFromOldInstance() {
+    assertThat(client.setIfAbsent(KEY, OLD, TTL)).isTrue();
+    assertThat(client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true))
+        .isEqualTo(1L);
+
+    // 이전 인스턴스가 기본 키만 교체한 상황
+    redisTemplate.opsForValue().set(KEY, AFTER, TTL);
+
+    long result = client.rotateWithHistory(KEY, OLD, NEXT, TTL, Duration.ofSeconds(10), true);
+
+    assertThat(result).isZero();
+    assertThat(redisTemplate.opsForValue().get(KEY)).isEqualTo(AFTER);
   }
 }

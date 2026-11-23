@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
 import com.tomo.user.entity.User;
@@ -242,6 +243,7 @@ class LoginSessionServiceTest {
         .isInstanceOfSatisfying(
             BusinessException.class,
             exception ->
-                assertThat(exception.getErrorCode()).isEqualTo(UserErrorCode.LOGOUT_FORBIDDEN));
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(CommonErrorCode.INVALID_ACCESS_TOKEN));
   }
 }

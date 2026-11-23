@@ -92,6 +92,21 @@ class AuthEndpointSecurityTest {
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
   }
 
+  @Test
+  @DisplayName("서명된 Access JWT의 세션 소유자가 일치하지 않으면 로그아웃은 401을 반환한다")
+  void rejectsOtherUserSessionOnLogout() throws Exception {
+    // given
+    String access = accessTokenProvider.issue("other-user", 10L, NOW.plusSeconds(600));
+    when(loginSessionService.isValidAccessSession("other-user", 10L)).thenReturn(false);
+
+    // when
+    // then
+    mockMvc
+        .perform(post("/api/v1/auth/logout").header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
+  }
+
   @TestConfiguration(proxyBeanMethods = false)
   static class JwtTestConfig {
     @Bean
