@@ -116,6 +116,29 @@ public interface AuthApiDocs {
                                             }
                                             """))),
     @ApiResponse(
+        responseCode = "409",
+        description = "동일 로그인 세션 요청 경합으로 분산 락 획득 실패",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                          {
+                                            "success": false,
+                                            "error": {
+                                              "code": "SESSION_STATE_CONFLICT",
+                                              "message": "동일 세션의 로그아웃과 토큰 재발급이 동시에 처리되어 상태가 충돌했습니다."
+                                            },
+                                            "meta": {
+                                              "requestId": "example-request-id",
+                                              "timestamp": "2026-11-23T00:00:00Z"
+                                            }
+                                          }
+                                          """))),
+    @ApiResponse(
         responseCode = "500",
         description = "서버 내부 오류",
         content =
@@ -206,6 +229,29 @@ public interface AuthApiDocs {
                                               }
                                             }
                                             """))),
+    @ApiResponse(
+        responseCode = "409",
+        description = "동일 로그인 세션 요청 경합으로 분산 락 획득 실패",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                          {
+                                            "success": false,
+                                            "error": {
+                                              "code": "SESSION_STATE_CONFLICT",
+                                              "message": "동일 세션의 로그아웃과 토큰 재발급이 동시에 처리되어 상태가 충돌했습니다."
+                                            },
+                                            "meta": {
+                                              "requestId": "example-request-id",
+                                              "timestamp": "2026-11-23T00:00:00Z"
+                                            }
+                                          }
+                                          """))),
     @ApiResponse(
         responseCode = "500",
         description = "서버 내부 오류",

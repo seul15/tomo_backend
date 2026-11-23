@@ -279,7 +279,7 @@ public final class LoginSessionFacade {
       throw new IllegalStateException("로그인 세션 락 대기가 중단되었습니다.", exception);
     }
     if (!acquired) {
-      throw new IllegalStateException("로그인 세션 락을 획득하지 못했습니다.");
+      throw new BusinessException(AuthErrorCode.SESSION_STATE_CONFLICT);
     }
     try {
       return work.get();

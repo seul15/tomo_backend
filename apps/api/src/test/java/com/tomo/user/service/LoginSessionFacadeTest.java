@@ -358,8 +358,11 @@ class LoginSessionFacadeTest {
     // when
     // then
     assertThatThrownBy(() -> facade.refresh(OLD_REFRESH))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("로그인 세션 락을 획득하지 못했습니다.");
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(AuthErrorCode.SESSION_STATE_CONFLICT));
     verifyNoInteractions(loginSessionService, accessTokenProvider);
     verify(lock, never()).unlock();
   }
@@ -373,8 +376,11 @@ class LoginSessionFacadeTest {
     // when
     // then
     assertThatThrownBy(() -> facade.logout(USER_ID, SESSION_ID))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("로그인 세션 락을 획득하지 못했습니다.");
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(AuthErrorCode.SESSION_STATE_CONFLICT));
 
     verifyNoInteractions(loginSessionService, refreshTokenService, accessTokenProvider);
     verify(lock, never()).unlock();
