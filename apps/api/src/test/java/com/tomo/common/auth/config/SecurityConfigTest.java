@@ -219,7 +219,7 @@ class SecurityConfigTest {
     String token = accessTokenProvider.issue("user-id", 10L, NOW.plusSeconds(600));
 
     when(loginSessionService.isValidAccessSession("user-id", 10L))
-        .thenThrow(new IllegalStateException("DB unavailable"));
+        .thenThrow(new IllegalStateException("DB 연결 불가"));
 
     // when
     ResultActions result =
@@ -280,7 +280,7 @@ class SecurityConfigTest {
     MockHttpServletResponse response = new MockHttpServletResponse();
 
     // when
-    accessDeniedHandler.handle(request, response, new AccessDeniedException("Access denied"));
+    accessDeniedHandler.handle(request, response, new AccessDeniedException("접근 권한 없음"));
 
     // then
     assertThat(response.getStatus()).isEqualTo(403);
@@ -364,7 +364,7 @@ class SecurityConfigTest {
 
     @GetMapping("/api/denied")
     String denied() {
-      throw new AccessDeniedException("Access denied");
+      throw new AccessDeniedException("접근 권한 없음");
     }
 
     @PostMapping({

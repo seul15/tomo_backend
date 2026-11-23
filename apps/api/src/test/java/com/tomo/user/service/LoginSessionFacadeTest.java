@@ -209,7 +209,7 @@ class LoginSessionFacadeTest {
     when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL)))
         .thenReturn("new-access-jwt");
     doNothing()
-        .doThrow(new IllegalStateException("DB commit failed"))
+        .doThrow(new IllegalStateException("DB 커밋 실패"))
         .when(transactionManager)
         .commit(any(TransactionStatus.class));
 
@@ -217,7 +217,7 @@ class LoginSessionFacadeTest {
     // then
     assertThatThrownBy(() -> facade.refresh(OLD_REFRESH))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("DB commit failed");
+        .hasMessageContaining("DB 커밋 실패");
     verify(refreshTokenService)
         .restorePreviousIfCurrentMatches(SESSION_ID, OLD_REFRESH, NEW_REFRESH, EXPIRES_AT);
     verify(accessTokenProvider).issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL));
@@ -250,7 +250,7 @@ class LoginSessionFacadeTest {
     when(session.getExpiresAt()).thenReturn(EXPIRES_AT);
     when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
 
-    doThrow(new IllegalStateException("Redis unavailable"))
+    doThrow(new IllegalStateException("Redis 연결 불가"))
         .when(refreshTokenService)
         .revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
 
@@ -315,13 +315,13 @@ class LoginSessionFacadeTest {
             new RefreshTokenService.Rotation(
                 RefreshTokenService.RotationStatus.ROTATED, NEW_REFRESH));
     when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL)))
-        .thenThrow(new IllegalStateException("JWT signing failed"));
+        .thenThrow(new IllegalStateException("JWT 서명 실패"));
 
     // when
     // then
     assertThatThrownBy(() -> facade.refresh(OLD_REFRESH))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("JWT signing failed");
+        .hasMessageContaining("JWT 서명 실패");
     verify(transactionManager).commit(any(TransactionStatus.class));
     verify(transactionManager, never()).rollback(any(TransactionStatus.class));
     verify(loginSessionService, never()).extendExpiration(SESSION_ID, EXPIRES_AT);
