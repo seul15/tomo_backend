@@ -11,6 +11,7 @@ import com.tomo.common.auth.token.AccessTokenProvider;
 import com.tomo.common.logging.RequestLoggingConfig;
 import com.tomo.user.service.LoginSessionFacade;
 import com.tomo.user.service.LoginSessionService;
+import com.tomo.user.service.SocialLoginFacade;
 import com.tomo.user.service.model.TokenRefreshResult;
 import io.jsonwebtoken.Jwts;
 import java.time.Clock;
@@ -44,6 +45,7 @@ class AuthEndpointSecurityTest {
 
   @MockitoBean private LoginSessionFacade loginSessionFacade;
   @MockitoBean private LoginSessionService loginSessionService;
+  @MockitoBean private SocialLoginFacade socialLoginFacade;
 
   @Test
   @DisplayName("재발급 API는 Access JWT 없이 Refresh Bearer 토큰을 받아 처리한다")

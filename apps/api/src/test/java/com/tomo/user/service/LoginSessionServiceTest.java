@@ -2,6 +2,7 @@ package com.tomo.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -243,5 +244,45 @@ class LoginSessionServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_ACCESS_TOKEN));
+  }
+
+  @Test
+  @DisplayName("ACTIVE 계정은 잠금 조회 후 새 로그인 세션을 생성한다")
+  void createsSessionForActiveUser() {
+    // given
+    LocalDateTime expiresAt = LocalDateTime.ofInstant(NOW.plusSeconds(604800), ZoneOffset.UTC);
+
+    when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+    when(user.getAccountStatus()).thenReturn(AccountStatus.ACTIVE);
+    when(loginSessionRepository.saveAndFlush(any(LoginSession.class))).thenReturn(session);
+
+    // when
+    LoginSession result = service.createForActiveUser(USER_ID, expiresAt);
+
+    // then
+    assertThat(result).isSameAs(session);
+    verify(userRepository).findByIdForUpdate(USER_ID);
+    verify(loginSessionRepository).saveAndFlush(any(LoginSession.class));
+  }
+
+  @Test
+  @DisplayName("PENDING 계정은 최초 로그인 세션을 생성할 수 없다")
+  void rejectsPendingUserOnSessionCreation() {
+    // given
+    LocalDateTime expiresAt = LocalDateTime.ofInstant(NOW.plusSeconds(604800), ZoneOffset.UTC);
+
+    when(userRepository.findByIdForUpdate(USER_ID)).thenReturn(Optional.of(user));
+    when(user.getAccountStatus()).thenReturn(AccountStatus.PENDING);
+
+    // when
+    // then
+    assertThatThrownBy(() -> service.createForActiveUser(USER_ID, expiresAt))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(AuthErrorCode.SOCIAL_LOGIN_FORBIDDEN));
+
+    verifyNoInteractions(loginSessionRepository);
   }
 }

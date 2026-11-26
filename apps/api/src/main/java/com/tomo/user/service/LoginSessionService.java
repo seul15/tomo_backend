@@ -6,6 +6,7 @@ import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.user.entity.AccountStatus;
 import com.tomo.user.entity.LoginSession;
+import com.tomo.user.entity.User;
 import com.tomo.user.repository.LoginSessionRepository;
 import com.tomo.user.repository.UserRepository;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -175,5 +176,36 @@ public class LoginSessionService implements AccessSessionValidator {
     if (updated != 1) {
       throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
+  }
+
+  /**
+   * ACTIVE 사용자에게 새로운 로그인 세션을 생성한다.
+   *
+   * <p>계정 상태 확인과 세션 생성이 끝날 때까지 사용자 행을 잠근다.
+   *
+   * @param userId 로그인할 사용자 ID
+   * @param expiresAt 로그인 세션 만료 시각(UTC)
+   * @return 생성된 로그인 세션
+   * @throws IllegalArgumentException 전달된 세션 정보가 올바르지 않은 경우
+   * @throws BusinessException 사용자가 ACTIVE 상태가 아닌 경우
+   */
+  @Transactional
+  public LoginSession createForActiveUser(String userId, LocalDateTime expiresAt) {
+    LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+
+    if (userId == null || userId.isBlank() || expiresAt == null || !expiresAt.isAfter(now)) {
+      throw new IllegalArgumentException("유효한 로그인 세션 정보가 필요합니다.");
+    }
+
+    User user =
+        userRepository
+            .findByIdForUpdate(userId)
+            .orElseThrow(() -> new BusinessException(AuthErrorCode.SOCIAL_LOGIN_FORBIDDEN));
+
+    if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+      throw new BusinessException(AuthErrorCode.SOCIAL_LOGIN_FORBIDDEN);
+    }
+
+    return loginSessionRepository.saveAndFlush(LoginSession.create(userId, now, expiresAt));
   }
 }

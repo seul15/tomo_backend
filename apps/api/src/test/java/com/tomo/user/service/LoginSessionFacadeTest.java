@@ -85,6 +85,28 @@ class LoginSessionFacadeTest {
   }
 
   @Test
+  @DisplayName("ACTIVE 계정의 최초 로그인은 DB 세션과 Access·Refresh Token을 발급한다")
+  void issuesInitialLoginTokens() {
+    // given
+    when(loginSessionService.createForActiveUser(USER_ID, EXPIRES_AT)).thenReturn(session);
+    when(session.getId()).thenReturn(SESSION_ID);
+    when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL))).thenReturn("access");
+    when(refreshTokenService.issue(SESSION_ID, EXPIRES_AT)).thenReturn(NEW_REFRESH);
+
+    // when
+    TokenRefreshResult result = facade.issueForActiveUser(USER_ID);
+
+    // then
+    assertThat(result.accessToken()).isEqualTo("access");
+    assertThat(result.refreshToken()).isEqualTo(NEW_REFRESH);
+    assertThat(result.accessTokenExpiresIn()).isEqualTo(3600);
+    assertThat(result.refreshTokenExpiresIn()).isEqualTo(604800);
+
+    verify(loginSessionService).createForActiveUser(USER_ID, EXPIRES_AT);
+    verify(refreshTokenService).issue(SESSION_ID, EXPIRES_AT);
+  }
+
+  @Test
   @DisplayName("현재 Refresh Token 교체 시 DB 만료시간을 7일 연장하고 새 토큰 쌍을 발급한다")
   void refreshesCurrentToken() {
     // given
@@ -384,5 +406,46 @@ class LoginSessionFacadeTest {
 
     verifyNoInteractions(loginSessionService, refreshTokenService, accessTokenProvider);
     verify(lock, never()).unlock();
+  }
+
+  @Test
+  @DisplayName("최초 Refresh Token 발급 실패 시 DB 세션과 Redis 토큰을 정리한다")
+  void cleansUpWhenInitialRefreshIssuanceFails() {
+    // given
+    when(loginSessionService.createForActiveUser(USER_ID, EXPIRES_AT)).thenReturn(session);
+    when(session.getId()).thenReturn(SESSION_ID);
+    when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL))).thenReturn("access");
+    when(refreshTokenService.issue(SESSION_ID, EXPIRES_AT))
+        .thenThrow(new IllegalStateException("Redis 장애"));
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+
+    // when
+    // then
+    assertThatThrownBy(() -> facade.issueForActiveUser(USER_ID))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Redis 장애");
+
+    verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
+    verify(refreshTokenService).revokeBeforeSessionDeletion(SESSION_ID, EXPIRES_AT);
+  }
+
+  @Test
+  @DisplayName("최초 Access Token 발급 실패 시 DB 세션만 정리한다")
+  void cleansUpWhenInitialAccessIssuanceFails() {
+    // given
+    when(loginSessionService.createForActiveUser(USER_ID, EXPIRES_AT)).thenReturn(session);
+    when(session.getId()).thenReturn(SESSION_ID);
+    when(accessTokenProvider.issue(USER_ID, SESSION_ID, NOW.plus(ACCESS_TTL)))
+        .thenThrow(new IllegalStateException("JWT 서명 실패"));
+    when(loginSessionService.invalidateOwnedSession(USER_ID, SESSION_ID)).thenReturn(true);
+
+    // when
+    // then
+    assertThatThrownBy(() -> facade.issueForActiveUser(USER_ID))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT 서명 실패");
+
+    verify(loginSessionService).invalidateOwnedSession(USER_ID, SESSION_ID);
+    verifyNoInteractions(refreshTokenService);
   }
 }

@@ -3,7 +3,10 @@ package com.tomo.user.controller.docs;
 import com.tomo.common.openapi.OpenApiConfig;
 import com.tomo.common.response.CommonResponse;
 import com.tomo.common.response.ErrorResponse;
+import com.tomo.user.dto.request.GoogleLoginRequest;
+import com.tomo.user.dto.request.KakaoLoginRequest;
 import com.tomo.user.dto.response.AuthRefreshResponse;
+import com.tomo.user.dto.response.SocialLoginResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -18,7 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 
 /** 인증 토큰 재발급 및 로그아웃 API 명세. */
-@Tag(name = "Auth", description = "인증 토큰 재발급 및 현재 기기 로그아웃 API")
+@Tag(name = "Auth", description = "Google·Kakao 소셜 로그인, 토큰 재발급 및 로그아웃 API")
 public interface AuthApiDocs {
 
   /**
@@ -280,4 +283,122 @@ public interface AuthApiDocs {
       @Parameter(hidden = true) String userId,
       @Parameter(hidden = true) Authentication authentication,
       @Parameter(hidden = true) HttpServletRequest request);
+
+  /**
+   * Google 소셜 로그인 API.
+   *
+   * @param body 인가 코드 및 PKCE 검증값
+   * @param request 요청 ID용 HTTP 요청
+   * @return PENDING 가입 전용 토큰 또는 ACTIVE 로그인 토큰
+   */
+  @Operation(
+      summary = "Google 소셜 로그인",
+      description =
+          "프론트에서 state와 PKCE(S256)를 검증합니다. "
+              + "백엔드는 인가 코드를 Google과 교환하고, PENDING은 Signup Token만, "
+              + "ACTIVE는 Access/Refresh Token을 반환합니다.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "로그인 완료 또는 가입 대기",
+        useReturnTypeSchema = true,
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = {
+                  @ExampleObject(
+                      name = "가입 대기",
+                      value =
+                          """
+                          {"success":true,"data":{"signupToken":"JWT","signupTokenExpiresIn":600},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
+                          """),
+                  @ExampleObject(
+                      name = "로그인 완료",
+                      value =
+                          """
+                          {"success":true,"data":{"accessToken":"ACCESS_JWT","refreshToken":"123.OPAQUE_REFRESH_TOKEN","accessTokenExpiresIn":3600,"refreshTokenExpiresIn":604800,"user":{"role":"USER","nickname":"집중토모","profileImageUrl":"https://res.cloudinary.com/example/default.png"}},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
+                          """)
+                })),
+    @ApiResponse(
+        responseCode = "400",
+        description = "INVALID_REQUEST",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "401",
+        description = "OAUTH_AUTHENTICATION_FAILED",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "403",
+        description = "SOCIAL_LOGIN_FORBIDDEN",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "409",
+        description = "CONCURRENT_REQUEST_CONFLICT",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "500",
+        description = "INTERNAL_SERVER_ERROR",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  })
+  CommonResponse<SocialLoginResponse> google(
+      GoogleLoginRequest body, @Parameter(hidden = true) HttpServletRequest request);
+
+  /**
+   * Kakao 소셜 로그인 API.
+   *
+   * @param body Kakao 인가 코드
+   * @param request 요청 ID용 HTTP 요청
+   * @return PENDING 가입 전용 토큰 또는 ACTIVE 로그인 토큰
+   */
+  @Operation(
+      summary = "Kakao 소셜 로그인",
+      description =
+          "프론트에서 state 검증에 성공한 인가 코드를 전달합니다. "
+              + "백엔드는 Kakao와 코드를 교환하고, PENDING은 Signup Token만, "
+              + "ACTIVE는 Access/Refresh Token을 반환합니다.")
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "로그인 완료 또는 가입 대기",
+        useReturnTypeSchema = true,
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = {
+                  @ExampleObject(
+                      name = "가입 대기",
+                      value =
+                          """
+                          {"success":true,"data":{"signupToken":"JWT","signupTokenExpiresIn":600},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
+                          """),
+                  @ExampleObject(
+                      name = "로그인 완료",
+                      value =
+                          """
+                          {"success":true,"data":{"accessToken":"ACCESS_JWT","refreshToken":"123.OPAQUE_REFRESH_TOKEN","accessTokenExpiresIn":3600,"refreshTokenExpiresIn":604800,"user":{"role":"USER","nickname":"집중토모","profileImageUrl":"https://res.cloudinary.com/example/default.png"}},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
+                          """)
+                })),
+    @ApiResponse(
+        responseCode = "400",
+        description = "INVALID_REQUEST",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "401",
+        description = "OAUTH_AUTHENTICATION_FAILED",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "403",
+        description = "SOCIAL_LOGIN_FORBIDDEN",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "409",
+        description = "CONCURRENT_REQUEST_CONFLICT",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+    @ApiResponse(
+        responseCode = "500",
+        description = "INTERNAL_SERVER_ERROR",
+        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  })
+  CommonResponse<SocialLoginResponse> kakao(
+      KakaoLoginRequest body, @Parameter(hidden = true) HttpServletRequest request);
 }

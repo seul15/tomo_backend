@@ -3,10 +3,18 @@ package com.tomo.user.controller;
 import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenClaims;
 import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.common.response.CommonResponse;
 import com.tomo.user.controller.docs.AuthApiDocs;
+import com.tomo.user.dto.request.GoogleLoginRequest;
+import com.tomo.user.dto.request.KakaoLoginRequest;
 import com.tomo.user.dto.response.AuthRefreshResponse;
+import com.tomo.user.dto.response.AuthenticatedUserResponse;
+import com.tomo.user.dto.response.SignupPendingResponse;
+import com.tomo.user.dto.response.SocialLoginResponse;
 import com.tomo.user.service.LoginSessionFacade;
+import com.tomo.user.service.SocialLoginFacade;
+import com.tomo.user.service.model.SocialLoginResult;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -15,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,14 +36,19 @@ public class AuthController implements AuthApiDocs {
       Pattern.compile("(?i)^Bearer[ \t]+([^ \t]+)[ \t]*$");
 
   private final LoginSessionFacade loginSessionFacade;
+  private static final Pattern PKCE_PATTERN = Pattern.compile("[A-Za-z0-9._~-]{43,128}");
+  private final SocialLoginFacade socialLoginFacade;
 
   /**
-   * 인증 세션 업무 조정 객체를 주입한다.
+   * 인증 및 소셜 로그인 서비스를 주입한다.
    *
    * @param loginSessionFacade 로그인 세션과 Refresh Token 업무 조정 객체
+   * @param socialLoginFacade Google·Kakao 소셜 로그인 업무 조정 객체
    */
-  public AuthController(LoginSessionFacade loginSessionFacade) {
+  public AuthController(
+      LoginSessionFacade loginSessionFacade, SocialLoginFacade socialLoginFacade) {
     this.loginSessionFacade = loginSessionFacade;
+    this.socialLoginFacade = socialLoginFacade;
   }
 
   /**
@@ -78,6 +92,62 @@ public class AuthController implements AuthApiDocs {
     }
     loginSessionFacade.logout(userId, claims.loginSessionId());
     return CommonResponse.successWithoutData(request.getRequestId());
+  }
+
+  /**
+   * Google 인가 코드 및 PKCE 검증값으로 로그인한다.
+   *
+   * @param body Google 로그인 요청
+   * @param request 요청 ID용 HTTP 요청
+   * @return PENDING 또는 ACTIVE 소셜 로그인 응답
+   * @throws BusinessException 요청값 검증 또는 소셜 인증 실패
+   */
+  @Override
+  @PostMapping(
+      value = "/google",
+      consumes = MediaType.APPLICATION_JSON_VALUE,
+      produces = MediaType.APPLICATION_JSON_VALUE)
+  public CommonResponse<SocialLoginResponse> google(
+      @RequestBody(required = false) GoogleLoginRequest body, HttpServletRequest request) {
+    if (body == null
+        || body.authorizationCode() == null
+        || body.authorizationCode().isBlank()
+        || body.codeVerifier() == null
+        || !PKCE_PATTERN.matcher(body.codeVerifier()).matches()) {
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
+    }
+    return socialResponse(
+        socialLoginFacade.loginGoogle(body.authorizationCode(), body.codeVerifier()), request);
+  }
+
+  /**
+   * Kakao 인가 코드로 로그인한다.
+   *
+   * @param body Kakao 로그인 요청
+   * @param request 요청 ID용 HTTP 요청
+   * @return PENDING 또는 ACTIVE 소셜 로그인 응답
+   * @throws BusinessException 요청값 검증 또는 소셜 인증 실패
+   */
+  @Override
+  @PostMapping(
+      value = "/kakao",
+      consumes = MediaType.APPLICATION_JSON_VALUE,
+      produces = MediaType.APPLICATION_JSON_VALUE)
+  public CommonResponse<SocialLoginResponse> kakao(
+      @RequestBody(required = false) KakaoLoginRequest body, HttpServletRequest request) {
+    if (body == null || body.authorizationCode() == null || body.authorizationCode().isBlank()) {
+      throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
+    }
+    return socialResponse(socialLoginFacade.loginKakao(body.authorizationCode()), request);
+  }
+
+  private static CommonResponse<SocialLoginResponse> socialResponse(
+      SocialLoginResult result, HttpServletRequest request) {
+    SocialLoginResponse response =
+        result.tokens() == null
+            ? SignupPendingResponse.from(result)
+            : AuthenticatedUserResponse.from(result);
+    return CommonResponse.success(response, request.getRequestId());
   }
 
   /**

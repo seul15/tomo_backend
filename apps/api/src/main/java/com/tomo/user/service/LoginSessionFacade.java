@@ -78,6 +78,56 @@ public final class LoginSessionFacade {
   }
 
   /**
+   * ACTIVE 사용자에게 새 로그인 세션과 Access·Refresh Token을 발급한다.
+   *
+   * <p>DB 세션 생성 후 토큰 발급에 실패하면 생성한 세션과 Redis 토큰을 정리한다.
+   *
+   * @param userId 로그인할 ACTIVE 사용자 ID
+   * @return Access·Refresh Token과 만료기간
+   * @throws BusinessException 계정 상태가 유효하지 않거나 토큰 발급이 거부된 경우
+   * @throws IllegalStateException 토큰 발급 또는 실패 후 세션 정리에 실패한 경우
+   */
+  public TokenRefreshResult issueForActiveUser(String userId) {
+    Instant now = clock.instant();
+    LocalDateTime expiresAt = LocalDateTime.ofInstant(now.plus(refreshTokenTtl), ZoneOffset.UTC);
+
+    LoginSession session = loginSessionService.createForActiveUser(userId, expiresAt);
+    long sessionId = session.getId();
+    boolean refreshIssuanceAttempted = false;
+
+    try {
+      String accessToken = accessTokenProvider.issue(userId, sessionId, now.plus(accessTokenTtl));
+
+      refreshIssuanceAttempted = true;
+      String refreshToken = refreshTokenService.issue(sessionId, expiresAt);
+
+      return new TokenRefreshResult(
+          accessToken, refreshToken, accessTokenTtl.toSeconds(), refreshTokenTtl.toSeconds());
+
+    } catch (RuntimeException exception) {
+      try {
+        if (!loginSessionService.invalidateOwnedSession(userId, sessionId)) {
+          LOG.error("최초 로그인 세션 정리 미적용. sessionId={}", sessionId);
+        }
+      } catch (RuntimeException cleanupFailure) {
+        exception.addSuppressed(cleanupFailure);
+        LOG.error("최초 로그인 DB 세션 정리 실패. sessionId={}", sessionId, cleanupFailure);
+      }
+
+      if (refreshIssuanceAttempted) {
+        try {
+          refreshTokenService.revokeBeforeSessionDeletion(sessionId, expiresAt);
+        } catch (RuntimeException cleanupFailure) {
+          exception.addSuppressed(cleanupFailure);
+          LOG.error("최초 로그인 Redis 토큰 폐기 실패. sessionId={}", sessionId, cleanupFailure);
+        }
+      }
+
+      throw exception;
+    }
+  }
+
+  /**
    * 기존 Refresh Token을 확인하고 새 Access/Refresh Token을 교체 발급한다.
    *
    * <p>동일 세션의 로그아웃과 재발급은 분산 락으로 직렬화한다. Redis 호출은 DB 트랜잭션 밖에서 수행한다.

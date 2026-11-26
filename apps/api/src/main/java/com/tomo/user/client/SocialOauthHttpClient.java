@@ -1,0 +1,119 @@
+package com.tomo.user.client;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tomo.common.auth.exception.AuthErrorCode;
+import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.CommonErrorCode;
+import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
+
+/** 소셜 제공자에 토큰 교환 및 사용자 정보 조회 HTTP 요청을 보낸다. */
+@Component
+public class SocialOauthHttpClient {
+  private static final Logger LOG = LoggerFactory.getLogger(SocialOauthHttpClient.class);
+  private static final ObjectMapper JSON = new ObjectMapper();
+  private final RestClient restClient;
+
+  /** 연결 3초·응답 5초 제한을 적용한 소셜 HTTP 클라이언트를 생성한다. */
+  public SocialOauthHttpClient() {
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(Duration.ofSeconds(3));
+    factory.setReadTimeout(Duration.ofSeconds(5));
+    this.restClient = RestClient.builder().requestFactory(factory).build();
+  }
+
+  SocialOauthHttpClient(RestClient restClient) {
+    this.restClient = restClient;
+  }
+
+  /**
+   * 인가 코드를 제공자 Access Token으로 교환한다.
+   *
+   * @param endpoint 고정된 제공자 토큰 URL
+   * @param form 토큰 교환 요청 필드
+   * @return JSON 토큰 응답
+   * @throws BusinessException 인가 코드 오류 또는 제공자 통신 장애
+   */
+  public JsonNode postForm(String endpoint, MultiValueMap<String, String> form) {
+    try {
+      return requireObject(
+          restClient
+              .post()
+              .uri(endpoint)
+              .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+              .body(form)
+              .retrieve()
+              .body(JsonNode.class));
+    } catch (RestClientException exception) {
+      throw translateFailure(exception, true);
+    }
+  }
+
+  /**
+   * 제공자 Access Token으로 사용자 정보를 조회한다.
+   *
+   * @param endpoint 고정된 제공자 사용자 정보 URL
+   * @param accessToken 제공자 Access Token
+   * @return JSON 사용자 정보
+   * @throws BusinessException 제공자 인증 또는 통신 장애
+   */
+  public JsonNode getProfile(String endpoint, String accessToken) {
+    try {
+      return requireObject(
+          restClient
+              .get()
+              .uri(endpoint)
+              .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+              .retrieve()
+              .body(JsonNode.class));
+    } catch (RestClientException exception) {
+      throw translateFailure(exception, false);
+    }
+  }
+
+  private static JsonNode requireObject(JsonNode body) {
+    if (body == null || !body.isObject()) {
+      throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
+    }
+    return body;
+  }
+
+  private BusinessException translateFailure(RestClientException exception, boolean tokenRequest) {
+    if (exception instanceof RestClientResponseException response) {
+      int status = response.getStatusCode().value();
+      if (tokenRequest
+          && (status == 400 || status == 401)
+          && "invalid_grant".equals(readOAuthError(response))) {
+        LOG.debug("소셜 인증 거부. status={}", status);
+        return new BusinessException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
+      }
+      if (!tokenRequest && (status == 401 || status == 403)) {
+        LOG.debug("소셜 인증 거부. status={}", status);
+        return new BusinessException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
+      }
+      LOG.warn("소셜 제공자 응답 오류. tokenRequest={} status={}", tokenRequest, status);
+    } else {
+      LOG.warn("소셜 제공자 통신 오류. causeType={}", exception.getClass().getSimpleName());
+    }
+    return new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
+  }
+
+  private String readOAuthError(RestClientResponseException response) {
+    try {
+      JsonNode body = JSON.readTree(response.getResponseBodyAsByteArray());
+      return body == null ? "" : body.path("error").asText("");
+    } catch (java.io.IOException exception) {
+      return "";
+    }
+  }
+}

@@ -19,4 +19,21 @@ public interface SocialProviderClient {
    * @return 제공자별 사용자 고유 식별값
    */
   String getProviderSubject(String providerAccessToken);
+
+  /**
+   * 인가 코드를 교환해 제공자가 검증한 사용자 정보만 반환한다.
+   *
+   * @param authorizationCode 제공자 인가 코드
+   * @param codeVerifier Google PKCE 검증값. Kakao에서는 null
+   * @return 제공자 고유 ID와 선택 이메일
+   */
+  Identity authenticateAuthorizationCode(String authorizationCode, String codeVerifier);
+
+  /**
+   * 검증된 제공자 사용자 식별 정보.
+   *
+   * @param providerSubject 제공자 고유 사용자 ID
+   * @param email 제공된 이메일. 없으면 null
+   */
+  record Identity(String providerSubject, String email) {}
 }
