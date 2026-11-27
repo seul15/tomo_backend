@@ -16,13 +16,13 @@ public record UserProfileResponse(
     @Schema(description = "사용자 닉네임", example = "집중토모", requiredMode = Schema.RequiredMode.REQUIRED)
         String nickname,
     @Schema(
-            description = "프로필 이미지 URL. 미등록 시 null",
+            description = "DB에 저장된 프로필 이미지 URL. 등록된 이미지가 없으면 null",
             example = "https://cdn.example.com/profile/user01.png",
             nullable = true,
             requiredMode = Schema.RequiredMode.REQUIRED)
         String profileImageUrl,
     @Schema(
-            description = "연결된 이메일. 제공되지 않은 경우 null",
+            description = "소셜 계정에 저장된 이메일. 저장된 값이 없으면 null",
             example = "test@google.com",
             nullable = true,
             requiredMode = Schema.RequiredMode.REQUIRED)

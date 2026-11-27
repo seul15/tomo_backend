@@ -30,8 +30,43 @@ public interface UserApiDocs {
   @Operation(
       summary = "내 계정·프로필 조회",
       description =
-          "Access Token으로 인증된 사용자 본인의 계정 및 프로필 정보를 조회합니다. "
-              + "사용자 ID는 인증 정보에서 확인하며, 별도의 Path·Query·Body 입력은 필요하지 않습니다.",
+          """
+                  Access Token으로 인증된 사용자의 계정 및 프로필 정보를 조회합니다.
+
+                  ### 요청 방법
+                  - `GET /api/v1/users/me`
+                  - `Authorization: Bearer {accessToken}` 헤더가 필요합니다.
+                  - 사용자 ID는 인증된 Access Token에서 확인합니다.
+                  - Path, Query, Body 입력값은 없습니다.
+                  - 다른 사용자의 ID를 지정하여 조회하는 API가 아닙니다.
+
+                  ### 조회 조건
+                  - ACTIVE 상태의 회원만 프로필을 조회할 수 있습니다.
+                  - 사용자 정보와 연결된 소셜 계정 정보를 함께 조회합니다.
+                  - 사용자 또는 소셜 계정 연결 정보가 없으면 `404 RESOURCE_NOT_FOUND`를 반환합니다.
+                  - ACTIVE 상태가 아닌 회원은 `403 PROFILE_VIEW_FORBIDDEN`으로 거부합니다.
+
+                  ### 성공 응답 필드
+                  - `nickname`: 사용자 닉네임입니다.
+                  - `profileImageUrl`: DB에 저장된 프로필 이미지 URL입니다.
+                  - `email`: 소셜 계정에 저장된 이메일입니다.
+                  - `provider`: `GOOGLE` 또는 `KAKAO`입니다.
+                  - `profileImageUrl`과 `email`은 null일 수 있습니다.
+                  - 응답에는 사용자 ID와 로그인 토큰이 포함되지 않습니다.
+
+                  ### 프론트 연동 시 주의사항
+                  - 프로필 이미지가 null인 경우를 처리해야 합니다.
+                  - 이메일이 null인 경우를 처리해야 합니다.
+                  - 현재 Google·Kakao 소셜 로그인에서는 이메일을 새로 저장하지 않습니다.
+                  - 소셜 로그인 성공 응답에서는 기본 프로필 이미지 URL을 적용할 수 있지만,
+                    이 조회 API는 DB에 저장된 이미지 값을 그대로 반환합니다.
+
+                  ### 오류 응답
+                  - `401 INVALID_ACCESS_TOKEN`: Access Token 인증 실패
+                  - `403 PROFILE_VIEW_FORBIDDEN`: 활성 상태가 아닌 회원
+                  - `404 RESOURCE_NOT_FOUND`: 사용자 또는 소셜 계정 연결 정보 없음
+                  - `500 INTERNAL_SERVER_ERROR`: 서버 내부 오류
+                  """,
       security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
   @ApiResponses({
     @ApiResponse(

@@ -20,8 +20,8 @@ public record AuthRefreshResponse(
             requiredMode = Schema.RequiredMode.REQUIRED)
         String accessToken,
     @Schema(
-            description = "기존 Refresh Token을 교체하여 발급한 새 불투명 Refresh Token",
-            example = "123.RANDOM_TOKEN_VALUE",
+            description = "기존 Refresh Token을 교체하여 발급한 새 불투명 Refresh Token. 세션ID.난수 형식",
+            example = "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             requiredMode = Schema.RequiredMode.REQUIRED)
         String refreshToken,
     @Schema(

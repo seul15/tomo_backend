@@ -35,14 +35,49 @@ public interface AuthApiDocs {
   @Operation(
       summary = "인증 토큰 재발급",
       description =
-          "Authorization 헤더의 Bearer Refresh Token을 검증하여 "
-              + "새 Access Token과 Refresh Token을 발급합니다. "
-              + "Access Token은 필요하지 않으며, 별도의 Path·Query·Body 입력도 없습니다. "
-              + "재발급 성공 시 기존 Refresh Token을 교체하고 로그인 세션 만료 시각을 "
-              + "현재 시각으로부터 7일 연장합니다. "
-              + "동일 세션의 중복 재발급에서는 먼저 교체한 요청만 성공합니다. "
-              + "직전 토큰을 10초 이내에 다시 사용하면 재발급만 거부하고, "
-              + "10초 이후 재사용이 확인되면 해당 기기의 로그인 세션을 무효화합니다.",
+          """
+                  Refresh Token을 검증하여 새로운 Access Token과 Refresh Token을 발급합니다.
+
+                  ### 요청 방법
+                  - `POST /api/v1/auth/refresh`
+                  - `Authorization: Bearer {refreshToken}` 헤더가 필요합니다.
+                  - Access Token 인증은 필요하지 않습니다.
+                  - Path, Query, Body 입력값은 없습니다.
+                  - Refresh Token은 쿠키가 아닌 Authorization 헤더로 전달합니다.
+
+                  ### 토큰 검증 및 재발급 규칙
+                  - Refresh Token의 형식과 로그인 세션 ID를 확인합니다.
+                  - DB 로그인 세션의 존재 여부와 만료 시각을 검증합니다.
+                  - Redis에 저장된 Refresh Token 상태를 검증합니다.
+                  - ACTIVE 상태의 회원만 재발급할 수 있습니다.
+                  - 성공하면 Access Token과 Refresh Token을 모두 새로 발급합니다.
+                  - 기존 Refresh Token은 교체되어 더 이상 사용할 수 없습니다.
+                  - 로그인 세션 만료 시각을 재발급 시점으로부터 7일 연장합니다.
+
+                  ### 토큰 만료기간
+                  - `accessTokenExpiresIn`: Access Token 유효기간(초). 기본값 3600초
+                  - `refreshTokenExpiresIn`: Refresh Token 유효기간(초). 기본값 604800초
+                  - 두 값은 고정 날짜가 아닌 유효기간을 초 단위로 나타냅니다.
+
+                  ### 동시 요청 및 토큰 재사용
+                  - 동일 세션의 재발급과 로그아웃 요청은 분산 락으로 직렬화합니다.
+                  - 분산 락을 5초 안에 획득하지 못하면 `409 SESSION_STATE_CONFLICT`를 반환합니다.
+                  - 직전 Refresh Token을 교체 후 10초 이내에 재사용하면 재발급만 거부합니다.
+                  - 교체 후 10초를 초과하여 직전 토큰을 재사용하면 로그인 세션을 무효화합니다.
+                  - 단, 요청 자체의 처리 지연 때문에 재사용으로 판정된 경우에는 세션 폐기를 보류합니다.
+
+                  ### 성공 응답 및 프론트 연동
+                  - HTTP 200 응답의 `data`에 새로운 `accessToken`, `refreshToken`이 포함됩니다.
+                  - 각 토큰의 만료기간과 `user.role`도 반환합니다.
+                  - 프론트에서는 성공 응답을 받은 후 기존 토큰 두 개를 모두 새 값으로 교체해야 합니다.
+                  - 이미 교체된 Refresh Token으로 재발급을 다시 요청하지 않도록 주의해야 합니다.
+
+                  ### 오류 응답
+                  - `401 INVALID_REFRESH_TOKEN`: 토큰 누락, 형식 오류, 만료, 폐기 또는 교체된 토큰 사용
+                  - `403 TOKEN_REFRESH_FORBIDDEN`: 비활성화된 회원
+                  - `409 SESSION_STATE_CONFLICT`: 동일 세션의 요청 경합
+                  - `500 INTERNAL_SERVER_ERROR`: 서버 내부 처리 오류
+                  """,
       security = @SecurityRequirement(name = OpenApiConfig.REFRESH_BEARER_AUTH))
   @ApiResponses({
     @ApiResponse(
@@ -60,7 +95,7 @@ public interface AuthApiDocs {
                                               "success": true,
                                               "data": {
                                                 "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
-                                                "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                                "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                                                 "accessTokenExpiresIn": 3600,
                                                 "refreshTokenExpiresIn": 604800,
                                                 "user": {
@@ -181,14 +216,34 @@ public interface AuthApiDocs {
   @Operation(
       summary = "로그아웃",
       description =
-          "Access Token으로 인증된 현재 기기의 로그인 세션을 종료합니다. "
-              + "Authorization 헤더에 Bearer Access Token이 필요하며, "
-              + "별도의 Path·Query·Body 입력은 필요하지 않습니다. "
-              + "해당 세션의 Refresh Token을 Redis에서 폐기하고 "
-              + "DB 로그인 세션을 삭제합니다. "
-              + "로그아웃 후 해당 세션의 Access Token과 Refresh Token은 사용할 수 없으며, "
-              + "다른 기기의 로그인 세션에는 영향을 주지 않습니다. "
-              + "클라이언트는 성공 응답을 받은 후 보관 중인 두 토큰을 삭제해야 합니다.",
+          """
+                  Access Token으로 인증된 사용자의 현재 로그인 세션을 종료합니다.
+
+                  ### 요청 방법
+                  - `POST /api/v1/auth/logout`
+                  - `Authorization: Bearer {accessToken}` 헤더가 필요합니다.
+                  - Refresh Token은 요청에 전달하지 않습니다.
+                  - Path, Query, Body 입력값은 없습니다.
+
+                  ### 처리 규칙
+                  - Access Token과 연결된 DB 로그인 세션을 확인합니다.
+                  - 요청한 사용자가 해당 로그인 세션의 소유자인지 검증합니다.
+                  - DB 로그인 세션을 삭제한 후 Redis의 Refresh Token을 폐기합니다.
+                  - Redis 토큰 폐기는 DB 세션 삭제 트랜잭션이 커밋된 뒤 수행합니다.
+                  - Redis 폐기에 실패하더라도 DB 세션 삭제가 완료되면 로그아웃은 성공 처리합니다.
+                  - 현재 로그인 세션만 종료하며 다른 기기의 로그인 세션에는 영향을 주지 않습니다.
+
+                  ### 성공 응답 및 프론트 연동
+                  - 성공 시 HTTP 200을 반환합니다.
+                  - 응답에는 `success`와 `meta`만 포함되고 `data` 필드는 없습니다.
+                  - 성공 응답을 받은 뒤 프론트에서 보관 중인 Access Token과 Refresh Token을 삭제해야 합니다.
+                  - 종료된 세션에 연결된 기존 토큰은 더 이상 사용할 수 없습니다.
+
+                  ### 오류 응답
+                  - `401 INVALID_ACCESS_TOKEN`: Access Token 누락, 형식 오류, 만료 또는 무효 세션
+                  - `409 SESSION_STATE_CONFLICT`: 동일 세션의 재발급·로그아웃 요청 경합
+                  - `500 INTERNAL_SERVER_ERROR`: 서버 내부 처리 오류
+                  """,
       security = @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH))
   @ApiResponses({
     @ApiResponse(
@@ -297,14 +352,54 @@ public interface AuthApiDocs {
   @Operation(
       summary = "Google 소셜 로그인",
       description =
-          "Google Authorization Code와 PKCE codeVerifier로 사용자를 인증합니다. "
-              + "프론트엔드에서 OAuth state를 검증한 후 인가 코드와 codeVerifier를 전달합니다. "
-              + "백엔드는 Google 토큰 API를 통해 PKCE를 검증받고 사용자 고유 ID(sub)를 조회합니다. "
-              + "이메일은 계정 식별이나 저장에 사용하지 않습니다. "
-              + "신규 회원 또는 PENDING 회원에게는 회원가입용 Signup Token을 반환하며, "
-              + "ACTIVE 회원에게는 새 로그인 세션을 생성하고 Access Token과 Refresh Token을 반환합니다. "
-              + "BAN 회원은 로그인을 거부하고, DELETE 회원은 기존 계정을 복구하지 않고 신규 가입으로 처리합니다. "
-              + "Access Token 인증은 필요하지 않습니다.",
+          """
+                  Google Authorization Code와 PKCE 검증값으로 사용자를 인증하고 소셜 로그인을 처리합니다.
+
+                  ### 요청 방법
+                  - `POST /api/v1/auth/google`
+                  - `Content-Type: application/json`
+                  - Access Token 인증은 필요하지 않습니다.
+                  - 프론트에서 OAuth state를 검증한 후 인가 코드와 codeVerifier를 전달합니다.
+                  - 백엔드는 state를 요청받거나 직접 검증하지 않습니다.
+
+                  ### 요청 필드
+                  - `authorizationCode`: Google에서 발급받은 인가 코드입니다. 필수값이며 빈 문자열을 허용하지 않습니다.
+                  - `codeVerifier`: Google PKCE(S256) 인증에 사용한 원본 검증값입니다.
+                  - `codeVerifier`는 43~128자여야 합니다.
+                  - 허용 문자는 영문 대소문자, 숫자, `.`, `_`, `~`, `-`입니다.
+                  - 요청값이 누락되거나 검증 조건을 충족하지 못하면 `400 INVALID_REQUEST`를 반환합니다.
+
+                  ### 소셜 인증 및 계정 식별
+                  - 백엔드는 인가 코드와 codeVerifier를 Google 토큰 API에 전달합니다.
+                  - 발급받은 Google Access Token으로 사용자 정보를 조회합니다.
+                  - Google 사용자 정보의 `sub`를 소셜 계정 고유 ID로 사용합니다.
+                  - `provider=GOOGLE`과 고유 ID의 조합으로 기존 계정을 조회합니다.
+                  - 소셜 이메일은 계정 식별 또는 저장에 사용하지 않습니다.
+
+                  ### 회원 상태별 처리
+                  - 신규 회원: PENDING 계정과 소셜 연결을 생성합니다.
+                  - PENDING 회원: 기존 계정을 사용하고 회원가입용 Signup Token을 발급합니다.
+                  - ACTIVE 회원: 새로운 로그인 세션을 만들고 Access Token과 Refresh Token을 발급합니다.
+                  - BAN 회원: `403 SOCIAL_LOGIN_FORBIDDEN`을 반환합니다.
+                  - DELETE 회원: 기존 계정을 복구하지 않고 새로운 PENDING 계정을 생성합니다.
+
+                  ### 성공 응답 및 프론트 연동
+                  - 신규 회원과 기존 회원 모두 HTTP 200을 반환합니다.
+                  - 가입 대기 응답에는 `signupToken`, `signupTokenExpiresIn`만 포함됩니다.
+                  - 가입 대기 응답에는 Access Token과 Refresh Token이 포함되지 않습니다.
+                  - 로그인 완료 응답에는 `accessToken`, `refreshToken`, 각 토큰의 만료기간과 `user`가 포함됩니다.
+                  - `user`에는 `role`, `nickname`, `profileImageUrl`이 포함됩니다.
+                  - 로그인 시 저장된 프로필 이미지가 없으면 설정된 기본 프로필 이미지 URL을 사용합니다.
+                  - 프론트에서는 `data.signupToken` 또는 `data.accessToken`의 존재 여부로 결과를 구분할 수 있습니다.
+                  - 로그인 완료 후 Access Token을 인증이 필요한 API의 Bearer 토큰으로 사용합니다.
+
+                  ### 오류 응답
+                  - `400 INVALID_REQUEST`: 인가 코드 누락 또는 PKCE 검증값 형식 오류
+                  - `401 OAUTH_AUTHENTICATION_FAILED`: Google 인증 실패 또는 인가 코드 만료
+                  - `403 SOCIAL_LOGIN_FORBIDDEN`: 이용 제한 계정
+                  - `409 CONCURRENT_REQUEST_CONFLICT`: 동시 소셜 계정 연결 충돌
+                  - `500 INTERNAL_SERVER_ERROR`: 제공자 통신 장애, 설정 오류 또는 서버 내부 오류
+                  """,
       requestBody =
           @RequestBody(
               description = "Google 인가 코드와 PKCE 검증값",
@@ -356,7 +451,7 @@ public interface AuthApiDocs {
                                                       "success": true,
                                                       "data": {
                                                         "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
-                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                                                         "accessTokenExpiresIn": 3600,
                                                         "refreshTokenExpiresIn": 604800,
                                                         "user": {
@@ -503,14 +598,52 @@ public interface AuthApiDocs {
   @Operation(
       summary = "Kakao 소셜 로그인",
       description =
-          "Kakao Authorization Code로 사용자를 인증합니다. "
-              + "프론트엔드에서 OAuth state를 검증한 후 인가 코드를 전달합니다. "
-              + "백엔드는 Kakao 토큰 API에서 Access Token을 발급받고 사용자 고유 ID를 조회합니다. "
-              + "이메일은 계정 식별이나 저장에 사용하지 않습니다. "
-              + "신규 회원 또는 PENDING 회원은 Signup Token을 발급받아 회원가입을 진행합니다. "
-              + "ACTIVE 회원은 새 로그인 세션과 Access Token, Refresh Token을 발급받습니다. "
-              + "BAN 회원은 로그인이 거부되며, DELETE 회원은 신규 계정으로 다시 가입합니다. "
-              + "Access Token 인증은 필요하지 않습니다.",
+          """
+                  Kakao Authorization Code로 사용자를 인증하고 소셜 로그인을 처리합니다.
+
+                  ### 요청 방법
+                  - `POST /api/v1/auth/kakao`
+                  - `Content-Type: application/json`
+                  - Access Token 인증은 필요하지 않습니다.
+                  - 프론트에서 OAuth state를 검증한 후 인가 코드를 전달합니다.
+                  - 백엔드는 state를 요청받거나 직접 검증하지 않습니다.
+
+                  ### 요청 필드
+                  - `authorizationCode`: Kakao에서 발급받은 인가 코드입니다.
+                  - 필수값이며 null, 빈 문자열, 공백 문자열을 허용하지 않습니다.
+                  - Google과 달리 `codeVerifier`를 요청받지 않습니다.
+                  - 요청값이 올바르지 않으면 `400 INVALID_REQUEST`를 반환합니다.
+
+                  ### 소셜 인증 및 계정 식별
+                  - 백엔드는 인가 코드를 Kakao 토큰 API에 전달합니다.
+                  - 발급받은 Kakao Access Token으로 사용자 정보를 조회합니다.
+                  - 사용자 정보의 `id`를 문자열로 변환하여 소셜 계정 고유 ID로 사용합니다.
+                  - `provider=KAKAO`와 고유 ID의 조합으로 기존 계정을 조회합니다.
+                  - 소셜 이메일은 계정 식별 또는 저장에 사용하지 않습니다.
+
+                  ### 회원 상태별 처리
+                  - 신규 회원: PENDING 계정과 소셜 연결을 생성합니다.
+                  - PENDING 회원: 기존 계정을 사용하고 회원가입용 Signup Token을 발급합니다.
+                  - ACTIVE 회원: 새로운 로그인 세션을 만들고 Access Token과 Refresh Token을 발급합니다.
+                  - BAN 회원: `403 SOCIAL_LOGIN_FORBIDDEN`을 반환합니다.
+                  - DELETE 회원: 기존 계정을 복구하지 않고 새로운 PENDING 계정을 생성합니다.
+
+                  ### 성공 응답 및 프론트 연동
+                  - 가입 대기와 로그인 완료 모두 HTTP 200을 반환합니다.
+                  - 가입 대기: `signupToken`, `signupTokenExpiresIn`을 반환합니다.
+                  - 로그인 완료: `accessToken`, `refreshToken`, 각 만료기간과 `user`를 반환합니다.
+                  - `user`에는 `role`, `nickname`, `profileImageUrl`이 포함됩니다.
+                  - 저장된 프로필 이미지가 없으면 설정된 기본 프로필 이미지 URL을 사용합니다.
+                  - 프론트에서는 `data.signupToken` 또는 `data.accessToken`의 존재 여부로 결과를 구분할 수 있습니다.
+                  - 로그인 완료 후 Access Token을 인증이 필요한 API의 Bearer 토큰으로 사용합니다.
+
+                  ### 오류 응답
+                  - `400 INVALID_REQUEST`: 인가 코드 누락 또는 빈 값
+                  - `401 OAUTH_AUTHENTICATION_FAILED`: Kakao 인증 실패 또는 인가 코드 만료
+                  - `403 SOCIAL_LOGIN_FORBIDDEN`: 이용 제한 계정
+                  - `409 CONCURRENT_REQUEST_CONFLICT`: 동시 소셜 계정 연결 충돌
+                  - `500 INTERNAL_SERVER_ERROR`: 제공자 통신 장애, 설정 오류 또는 서버 내부 오류
+                  """,
       requestBody =
           @RequestBody(
               description = "Kakao 인가 코드",
@@ -561,7 +694,7 @@ public interface AuthApiDocs {
                                                       "success": true,
                                                       "data": {
                                                         "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
-                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                                                         "accessTokenExpiresIn": 3600,
                                                         "refreshTokenExpiresIn": 604800,
                                                         "user": {

@@ -59,6 +59,7 @@ public record AuthenticatedUserResponse(
   public record UserInfo(
       @Schema(
               description = "TOMO 사용자 역할",
+              allowableValues = {"USER"},
               example = "USER",
               requiredMode = Schema.RequiredMode.REQUIRED)
           String role,
