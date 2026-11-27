@@ -38,7 +38,6 @@ class KakaoSocialProviderClientTest {
 
     // then
     assertThat(identity.providerSubject()).isEqualTo("12345");
-    assertThat(identity.email()).isNull();
   }
 
   @Test

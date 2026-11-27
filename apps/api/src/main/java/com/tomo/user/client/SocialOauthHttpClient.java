@@ -2,12 +2,14 @@ package com.tomo.user.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
 import com.tomo.common.exception.CommonErrorCode;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -21,19 +23,35 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class SocialOauthHttpClient {
   private static final Logger LOG = LoggerFactory.getLogger(SocialOauthHttpClient.class);
-  private static final ObjectMapper JSON = new ObjectMapper();
   private final RestClient restClient;
+  private final ObjectReader errorReader;
 
-  /** 연결 3초·응답 5초 제한을 적용한 소셜 HTTP 클라이언트를 생성한다. */
-  public SocialOauthHttpClient() {
+  /**
+   * Spring이 구성한 HTTP·JSON 객체를 이용해 OAuth 클라이언트를 생성한다.
+   *
+   * @param builder Spring RestClient Builder
+   * @param objectMapper 공통 JSON 매퍼
+   */
+  @Autowired
+  public SocialOauthHttpClient(RestClient.Builder builder, ObjectMapper objectMapper) {
     SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+
     factory.setConnectTimeout(Duration.ofSeconds(3));
     factory.setReadTimeout(Duration.ofSeconds(5));
-    this.restClient = RestClient.builder().requestFactory(factory).build();
+
+    this.restClient = builder.requestFactory(factory).build();
+    this.errorReader = objectMapper.reader();
   }
 
-  SocialOauthHttpClient(RestClient restClient) {
+  /**
+   * HTTP 응답을 직접 제어하는 테스트에서 사용한다.
+   *
+   * @param restClient 테스트용 HTTP 클라이언트
+   * @param objectMapper 테스트용 JSON 매퍼
+   */
+  SocialOauthHttpClient(RestClient restClient, ObjectMapper objectMapper) {
     this.restClient = restClient;
+    this.errorReader = objectMapper.reader();
   }
 
   /**
@@ -110,7 +128,7 @@ public class SocialOauthHttpClient {
 
   private String readOAuthError(RestClientResponseException response) {
     try {
-      JsonNode body = JSON.readTree(response.getResponseBodyAsByteArray());
+      JsonNode body = errorReader.readTree(response.getResponseBodyAsByteArray());
       return body == null ? "" : body.path("error").asText("");
     } catch (java.io.IOException exception) {
       return "";

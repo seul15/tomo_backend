@@ -28,15 +28,16 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 인증 토큰 재발급과 현재 기기 로그아웃 API를 제공한다. */
+/** Google·Kakao 로그인, 인증 토큰 재발급 및 로그아웃 API를 제공한다. */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController implements AuthApiDocs {
   private static final Pattern BEARER_PATTERN =
       Pattern.compile("(?i)^Bearer[ \t]+([^ \t]+)[ \t]*$");
 
-  private final LoginSessionFacade loginSessionFacade;
   private static final Pattern PKCE_PATTERN = Pattern.compile("[A-Za-z0-9._~-]{43,128}");
+
+  private final LoginSessionFacade loginSessionFacade;
   private final SocialLoginFacade socialLoginFacade;
 
   /**

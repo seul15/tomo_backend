@@ -46,7 +46,7 @@ class SocialAccountServiceTest {
     SocialAccountService service = new SocialAccountService(users, identities);
 
     // when
-    Account result = service.findOrCreate(SocialProvider.GOOGLE, "google-1", null);
+    Account result = service.findOrCreate(SocialProvider.GOOGLE, "google-1");
 
     // then
     assertThat(result.userId()).isEqualTo("user-1");
@@ -67,7 +67,7 @@ class SocialAccountServiceTest {
 
     // when
     // then
-    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.KAKAO, "42", null))
+    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.KAKAO, "42"))
         .isInstanceOfSatisfying(
             BusinessException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(AuthErrorCode.SOCIAL_LOGIN_FORBIDDEN));
@@ -86,9 +86,13 @@ class SocialAccountServiceTest {
     when(pending.getId()).thenReturn("new-id");
     when(users.saveAndFlush(any(User.class))).thenReturn(pending);
     SocialAccountService service = new SocialAccountService(users, identities);
+    when(identity.getId()).thenReturn(1L);
+
+    when(identities.findByProviderAndProviderSubjectForUpdate(SocialProvider.KAKAO, "42"))
+        .thenReturn(Optional.of(identity));
 
     // when
-    Account result = service.findOrCreate(SocialProvider.KAKAO, "42", null);
+    Account result = service.findOrCreate(SocialProvider.KAKAO, "42");
 
     // then
     assertThat(result.userId()).isEqualTo("new-id");
@@ -115,7 +119,7 @@ class SocialAccountServiceTest {
 
     // when
     // then
-    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.KAKAO, "42", null))
+    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.KAKAO, "42"))
         .isInstanceOfSatisfying(
             BusinessException.class,
             ex ->
@@ -131,7 +135,7 @@ class SocialAccountServiceTest {
 
     // when
     // then
-    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.GOOGLE, "x".repeat(256), null))
+    assertThatThrownBy(() -> service.findOrCreate(SocialProvider.GOOGLE, "x".repeat(256)))
         .isInstanceOf(BusinessException.class);
     verifyNoInteractions(users, identities);
   }

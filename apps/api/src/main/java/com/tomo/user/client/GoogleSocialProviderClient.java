@@ -47,11 +47,6 @@ public class GoogleSocialProviderClient implements SocialProviderClient {
   }
 
   @Override
-  public String getProviderSubject(String providerAccessToken) {
-    return fetchProfile(providerAccessToken).providerSubject();
-  }
-
-  @Override
   public Identity authenticateAuthorizationCode(String authorizationCode, String codeVerifier) {
     if (authorizationCode == null
         || authorizationCode.isBlank()
@@ -83,10 +78,11 @@ public class GoogleSocialProviderClient implements SocialProviderClient {
   private Identity fetchProfile(String accessToken) {
     JsonNode profile = httpClient.getProfile(PROFILE_URL, accessToken);
     JsonNode sub = profile.path("sub");
+
     if (!sub.isTextual() || sub.asText().isBlank()) {
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
-    JsonNode email = profile.path("email");
-    return new Identity(sub.asText(), email.isTextual() ? email.asText() : null);
+
+    return new Identity(sub.asText());
   }
 }

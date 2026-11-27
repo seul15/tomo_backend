@@ -20,7 +20,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 
-/** 인증 토큰 재발급 및 로그아웃 API 명세. */
+/** Google·Kakao 로그인, 인증 토큰 재발급 및 로그아웃 API 명세. */
 @Tag(name = "Auth", description = "Google·Kakao 소셜 로그인, 토큰 재발급 및 로그아웃 API")
 public interface AuthApiDocs {
 

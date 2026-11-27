@@ -7,11 +7,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tomo.common.auth.config.SecurityConfig;
+import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.auth.token.AccessTokenProvider;
+import com.tomo.common.exception.BusinessException;
 import com.tomo.common.logging.RequestLoggingConfig;
 import com.tomo.user.service.LoginSessionFacade;
 import com.tomo.user.service.LoginSessionService;
 import com.tomo.user.service.SocialLoginFacade;
+import com.tomo.user.service.model.SocialLoginResult;
 import com.tomo.user.service.model.TokenRefreshResult;
 import io.jsonwebtoken.Jwts;
 import java.time.Clock;
@@ -25,6 +28,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -139,5 +143,97 @@ class AuthEndpointSecurityTest {
         .andExpect(jsonPath("$.error.code").value("INVALID_ACCESS_TOKEN"));
 
     verify(loginSessionFacade).logout("user-id", 10L);
+  }
+
+  @Test
+  @DisplayName("Google 신규 회원은 HTTP 200과 Signup Token만 반환한다")
+  void googlePendingHttpResponse() throws Exception {
+    // given
+    String verifier = "A".repeat(43);
+
+    when(socialLoginFacade.loginGoogle("code", verifier))
+        .thenReturn(SocialLoginResult.pending("signup-jwt", 600));
+
+    // when
+    // then
+    mockMvc
+        .perform(
+            post("/api/v1/auth/google")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                            {
+                              "authorizationCode": "code",
+                              "codeVerifier": "%s"
+                            }
+                            """
+                        .replace("%s", verifier)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.signupToken").value("signup-jwt"))
+        .andExpect(jsonPath("$.data.signupTokenExpiresIn").value(600))
+        .andExpect(jsonPath("$.data.accessToken").doesNotExist());
+  }
+
+  @Test
+  @DisplayName("Kakao ACTIVE 회원은 HTTP 200과 로그인 토큰을 반환한다")
+  void kakaoActiveHttpResponse() throws Exception {
+    // given
+    when(socialLoginFacade.loginKakao("code"))
+        .thenReturn(
+            SocialLoginResult.active(
+                new TokenRefreshResult("access", "refresh", 3600, 604800),
+                "토모",
+                "https://example.com/default.png"));
+
+    // when
+    // then
+    mockMvc
+        .perform(
+            post("/api/v1/auth/kakao")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"authorizationCode\":\"code\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.accessToken").value("access"))
+        .andExpect(jsonPath("$.data.refreshToken").value("refresh"))
+        .andExpect(jsonPath("$.data.user.nickname").value("토모"))
+        .andExpect(jsonPath("$.data.signupToken").doesNotExist());
+  }
+
+  @Test
+  @DisplayName("잘못된 Google PKCE 요청은 HTTP 400을 반환한다")
+  void rejectsInvalidGoogleVerifierHttp() throws Exception {
+    // when
+    // then
+    mockMvc
+        .perform(
+            post("/api/v1/auth/google")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                                    {
+                                      "authorizationCode": "code",
+                                      "codeVerifier": "short"
+                                    }
+                                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+  }
+
+  @Test
+  @DisplayName("Kakao 소셜 인증 실패는 HTTP 401을 반환한다")
+  void rejectsKakaoAuthenticationFailureHttp() throws Exception {
+    // given
+    when(socialLoginFacade.loginKakao("invalid-code"))
+        .thenThrow(new BusinessException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED));
+
+    // when
+    // then
+    mockMvc
+        .perform(
+            post("/api/v1/auth/kakao")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"authorizationCode\":\"invalid-code\"}"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.error.code").value("OAUTH_AUTHENTICATION_FAILED"));
   }
 }

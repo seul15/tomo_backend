@@ -94,8 +94,7 @@ public final class SocialLoginFacade {
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
-    Account account =
-        socialAccountService.findOrCreate(provider, identity.providerSubject(), identity.email());
+    Account account = socialAccountService.findOrCreate(provider, identity.providerSubject());
     if (account.status() == AccountStatus.PENDING) {
       return SocialLoginResult.pending(
           signupTokenProvider.issue(account.userId()), signupTokenTtl.toSeconds());

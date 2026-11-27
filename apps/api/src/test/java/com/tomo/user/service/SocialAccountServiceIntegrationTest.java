@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +39,9 @@ class SocialAccountServiceIntegrationTest {
   @Autowired private SocialAccountService service;
   @Autowired private UserRepository users;
   @Autowired private SocialIdentityRepository identities;
+  @Autowired private JdbcTemplate jdbcTemplate;
 
+  private final List<String> deletedUserIds = new ArrayList<>();
   private final List<String> createdSubjects = new ArrayList<>();
 
   @AfterEach
@@ -54,6 +57,9 @@ class SocialAccountServiceIntegrationTest {
                 users.deleteById(userId);
               });
     }
+    for (String deletedUserId : deletedUserIds) {
+      users.deleteById(deletedUserId);
+    }
   }
 
   @Test
@@ -64,8 +70,8 @@ class SocialAccountServiceIntegrationTest {
     createdSubjects.add(subject);
 
     // when
-    Account first = service.findOrCreate(SocialProvider.GOOGLE, subject, null);
-    Account second = service.findOrCreate(SocialProvider.GOOGLE, subject, null);
+    Account first = service.findOrCreate(SocialProvider.GOOGLE, subject);
+    Account second = service.findOrCreate(SocialProvider.GOOGLE, subject);
 
     // then
     assertThat(first.userId()).isEqualTo(second.userId());
@@ -114,10 +120,36 @@ class SocialAccountServiceIntegrationTest {
     }
   }
 
+  @Test
+  @DisplayName("DELETE 계정은 기존 ID를 재사용하지 않고 새 PENDING 계정을 생성한다")
+  void deletedAccountIsNotReused() {
+    // given
+    String subject = "google-" + UUID.randomUUID();
+    createdSubjects.add(subject);
+
+    Account previous = service.findOrCreate(SocialProvider.GOOGLE, subject);
+
+    deletedUserIds.add(previous.userId());
+
+    jdbcTemplate.update(
+        "update users set account_status = 'DELETE' where users_id = ?", previous.userId());
+
+    // when
+    Account recreated = service.findOrCreate(SocialProvider.GOOGLE, subject);
+
+    // then
+    assertThat(recreated.userId()).isNotEqualTo(previous.userId());
+    assertThat(recreated.status()).isEqualTo(AccountStatus.PENDING);
+
+    assertThat(identities.findByProviderAndProviderSubject(SocialProvider.GOOGLE, subject))
+        .map(SocialIdentity::getUserId)
+        .contains(recreated.userId());
+  }
+
   private Object executeLogin(CountDownLatch start, String subject) throws Exception {
     start.await();
     try {
-      return service.findOrCreate(SocialProvider.GOOGLE, subject, null);
+      return service.findOrCreate(SocialProvider.GOOGLE, subject);
     } catch (BusinessException exception) {
       return exception.getErrorCode();
     }

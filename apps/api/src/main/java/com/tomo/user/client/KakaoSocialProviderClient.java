@@ -45,11 +45,6 @@ public class KakaoSocialProviderClient implements SocialProviderClient {
   }
 
   @Override
-  public String getProviderSubject(String providerAccessToken) {
-    return fetchProfile(providerAccessToken).providerSubject();
-  }
-
-  @Override
   public Identity authenticateAuthorizationCode(String authorizationCode, String unusedVerifier) {
     if (authorizationCode == null || authorizationCode.isBlank()) {
       throw new BusinessException(CommonErrorCode.INVALID_REQUEST);
@@ -77,10 +72,11 @@ public class KakaoSocialProviderClient implements SocialProviderClient {
   private Identity fetchProfile(String accessToken) {
     JsonNode profile = httpClient.getProfile(PROFILE_URL, accessToken);
     JsonNode id = profile.path("id");
+
     if ((!id.isTextual() && !id.isIntegralNumber()) || id.asText().isBlank()) {
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
-    JsonNode email = profile.path("kakao_account").path("email");
-    return new Identity(id.asText(), email.isTextual() ? email.asText() : null);
+
+    return new Identity(id.asText());
   }
 }

@@ -33,55 +33,69 @@ public class SocialAccountService {
   }
 
   /**
-   * 소셜 계정을 조회하고, 처음 로그인한 경우 신규 PENDING 계정을 저장한다.
+   * 소셜 계정을 조회하고, 처음 로그인한 경우 PENDING 계정을 생성한다.
+   *
+   * <p>DELETE 회원의 연결을 교체할 때는 최신 연결 정보를 재확인한다.
    *
    * @param provider Google 또는 Kakao
-   * @param subject 제공자가 검증한 고유 ID
-   * @param email 제공자가 제공한 선택 이메일
+   * @param subject 제공자가 검증한 사용자 고유 ID
    * @return 로그인할 회원 상태와 프로필
-   * @throws BusinessException 로그인 금지, 식별 정보 오류, 동시 연결 충돌
+   * @throws BusinessException 로그인 금지, 식별값 오류 또는 동시 연결 충돌
    */
   @Transactional
-  public Account findOrCreate(SocialProvider provider, String subject, String email) {
-    if (provider == null
-        || subject == null
-        || subject.isBlank()
-        || subject.length() > 255
-        || (email != null && email.length() > 320)) {
+  public Account findOrCreate(SocialProvider provider, String subject) {
+    if (provider == null || subject == null || subject.isBlank() || subject.length() > 255) {
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
     SocialIdentity identity =
         socialIdentityRepository.findByProviderAndProviderSubject(provider, subject).orElse(null);
+
     if (identity != null) {
       User user =
           userRepository
               .findByIdForUpdate(identity.getUserId())
               .orElseThrow(() -> new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR));
+
       if (user.getAccountStatus() == AccountStatus.BAN) {
         throw new BusinessException(AuthErrorCode.SOCIAL_LOGIN_FORBIDDEN);
       }
+
       if (user.getAccountStatus() == AccountStatus.PENDING
           || user.getAccountStatus() == AccountStatus.ACTIVE) {
         return new Account(
             user.getId(), user.getAccountStatus(), user.getNickname(), user.getProfileImage());
       }
-      // 과거 DELETE 계정의 연결만 해제하며, 사용자 데이터는 변경하거나 승계하지 않는다.
-      socialIdentityRepository.delete(identity);
+
+      // DELETE 회원의 이전 소셜 연결이 여전히 존재하는지 확인한다.
+      SocialIdentity latestIdentity =
+          socialIdentityRepository
+              .findByProviderAndProviderSubjectForUpdate(provider, subject)
+              .orElseThrow(
+                  () -> new BusinessException(CommonErrorCode.CONCURRENT_REQUEST_CONFLICT));
+
+      if (identity.getId() == null || !identity.getId().equals(latestIdentity.getId())) {
+        throw new BusinessException(CommonErrorCode.CONCURRENT_REQUEST_CONFLICT);
+      }
+
+      socialIdentityRepository.delete(latestIdentity);
       socialIdentityRepository.flush();
     }
 
     User pending = userRepository.saveAndFlush(User.createPending());
+
     try {
+      // 소셜 이메일은 저장하지 않고 제공자 고유 ID만 연결한다.
       socialIdentityRepository.saveAndFlush(
-          SocialIdentity.link(pending.getId(), provider, subject, email));
+          SocialIdentity.link(pending.getId(), provider, subject, null));
+
     } catch (DataIntegrityViolationException exception) {
-      // MySQL의 중복키 오류(1062)만 409. FK/기타 무결성 오류는 500으로 처리한다.
       if (isDuplicateKey(exception)) {
         throw new BusinessException(CommonErrorCode.CONCURRENT_REQUEST_CONFLICT);
       }
       throw exception;
     }
+
     return new Account(pending.getId(), AccountStatus.PENDING, null, null);
   }
 

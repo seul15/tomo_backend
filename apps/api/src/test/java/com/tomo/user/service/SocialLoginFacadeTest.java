@@ -50,8 +50,8 @@ class SocialLoginFacadeTest {
   void pendingIssuesSignupOnly() {
     // given
     when(google.authenticateAuthorizationCode("code", "verifier"))
-        .thenReturn(new SocialProviderClient.Identity("google-sub", null));
-    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub", null))
+        .thenReturn(new SocialProviderClient.Identity("google-sub"));
+    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub"))
         .thenReturn(new Account("user-1", AccountStatus.PENDING, null, null));
     when(signup.issue("user-1")).thenReturn("signup-token");
 
@@ -70,8 +70,8 @@ class SocialLoginFacadeTest {
   void activeCreatesSession() {
     // given
     when(google.authenticateAuthorizationCode("code", "verifier"))
-        .thenReturn(new SocialProviderClient.Identity("google-sub", null));
-    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub", null))
+        .thenReturn(new SocialProviderClient.Identity("google-sub"));
+    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub"))
         .thenReturn(new Account("user-1", AccountStatus.ACTIVE, "토모", null));
     when(session.issueForActiveUser("user-1"))
         .thenReturn(new TokenRefreshResult("access", "refresh", 3600, 604800));
@@ -91,8 +91,8 @@ class SocialLoginFacadeTest {
   void bannedCannotLogin() {
     // given
     when(google.authenticateAuthorizationCode("code", "verifier"))
-        .thenReturn(new SocialProviderClient.Identity("google-sub", null));
-    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub", null))
+        .thenReturn(new SocialProviderClient.Identity("google-sub"));
+    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub"))
         .thenReturn(new Account("user-1", AccountStatus.BAN, null, null));
 
     // when
@@ -112,8 +112,8 @@ class SocialLoginFacadeTest {
         new SocialLoginFacade(
             List.of(google), accounts, signup, session, Duration.ofMinutes(10), "");
     when(google.authenticateAuthorizationCode("code", "verifier"))
-        .thenReturn(new SocialProviderClient.Identity("google-sub", null));
-    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub", null))
+        .thenReturn(new SocialProviderClient.Identity("google-sub"));
+    when(accounts.findOrCreate(SocialProvider.GOOGLE, "google-sub"))
         .thenReturn(new Account("user-1", AccountStatus.ACTIVE, "토모", null));
 
     // when
