@@ -104,10 +104,7 @@ public class AuthController implements AuthApiDocs {
    * @throws BusinessException 요청값 검증 또는 소셜 인증 실패
    */
   @Override
-  @PostMapping(
-      value = "/google",
-      consumes = MediaType.APPLICATION_JSON_VALUE,
-      produces = MediaType.APPLICATION_JSON_VALUE)
+  @PostMapping("/google")
   public CommonResponse<SocialLoginResponse> google(
       @RequestBody(required = false) GoogleLoginRequest body, HttpServletRequest request) {
     if (body == null
@@ -130,10 +127,7 @@ public class AuthController implements AuthApiDocs {
    * @throws BusinessException 요청값 검증 또는 소셜 인증 실패
    */
   @Override
-  @PostMapping(
-      value = "/kakao",
-      consumes = MediaType.APPLICATION_JSON_VALUE,
-      produces = MediaType.APPLICATION_JSON_VALUE)
+  @PostMapping("/kakao")
   public CommonResponse<SocialLoginResponse> kakao(
       @RequestBody(required = false) KakaoLoginRequest body, HttpServletRequest request) {
     if (body == null || body.authorizationCode() == null || body.authorizationCode().isBlank()) {

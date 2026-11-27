@@ -14,12 +14,16 @@ import java.time.Duration;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /** 소셜 제공자 인증, 계정 상태 분기 및 기존 토큰 발급 기능을 조정한다. */
 @Service
 public final class SocialLoginFacade {
+  private static final Logger LOG = LoggerFactory.getLogger(SocialLoginFacade.class);
+
   private final Map<SocialProvider, SocialProviderClient> clients;
   private final SocialAccountService socialAccountService;
   private final SignupTokenProvider signupTokenProvider;
@@ -96,14 +100,17 @@ public final class SocialLoginFacade {
       SocialProvider provider, String authorizationCode, String codeVerifier) {
     SocialProviderClient client = clients.get(provider);
     if (client == null) {
+      LOG.warn("소셜 로그인 실패. 제공자 클라이언트가 등록되지 않음. provider={}", provider);
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
     SocialProviderClient.Identity identity =
         client.authenticateAuthorizationCode(authorizationCode, codeVerifier);
+
     if (identity == null
         || identity.providerSubject() == null
         || identity.providerSubject().isBlank()) {
+      LOG.warn("소셜 로그인 실패. 제공자 사용자 식별 정보가 유효하지 않음. provider={}", provider);
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
@@ -117,13 +124,18 @@ public final class SocialLoginFacade {
     }
 
     String imageUrl = account.profileImageUrl();
+
     if (imageUrl == null || imageUrl.isBlank()) {
       imageUrl = defaultImageUrl;
     }
-    if (account.nickname() == null
-        || account.nickname().isBlank()
-        || imageUrl == null
-        || imageUrl.isBlank()) {
+
+    if (account.nickname() == null || account.nickname().isBlank()) {
+      LOG.warn("소셜 로그인 실패. 가입 완료 회원의 닉네임이 없음. provider={}", provider);
+      throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    if (imageUrl == null || imageUrl.isBlank()) {
+      LOG.warn("소셜 로그인 실패. 등록된 프로필 이미지와 기본 이미지 설정이 모두 없음. provider={}", provider);
       throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
