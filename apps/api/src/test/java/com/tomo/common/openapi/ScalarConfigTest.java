@@ -21,7 +21,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class ScalarConfigTest {
 
   @Test
-  @DisplayName("springdoc 컨트롤러와 충돌 없이 Scalar 화면에 Catppuccin 테마를 적용한다")
+  @DisplayName("springdoc 컨트롤러와 충돌 없이 Scalar 화면에 Catppuccin 테마와 파비콘을 적용한다")
   void appliesThemeToSpringdocController() {
     // given
     WebApplicationContextRunner runner =
@@ -38,10 +38,12 @@ class ScalarConfigTest {
           SpringBootScalarProperties properties = context.getBean(SpringBootScalarProperties.class);
           assertThat(properties.getTheme()).isEqualTo(ScalarTheme.NONE);
           assertThat(properties.getUrl()).isEqualTo("/v3/api-docs");
+          assertThat(properties.getFavicon()).startsWith("data:image/png;base64,");
           ResponseEntity<String> response =
               context.getBean(ScalarWebMvcController.class).getDocs(new MockHttpServletRequest());
           assertThat(response.getBody())
-              .contains("#eff1f5", "#1e1e2e", ".light-mode", ".dark-mode");
+              .contains(
+                  "#eff1f5", "#1e1e2e", ".light-mode", ".dark-mode", "data:image/png;base64,");
         });
   }
 

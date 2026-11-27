@@ -1,0 +1,2 @@
+ALTER TABLE `category`
+  MODIFY COLUMN `category_id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '카테고리 아이디';

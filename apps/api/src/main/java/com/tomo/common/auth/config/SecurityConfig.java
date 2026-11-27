@@ -14,8 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -26,6 +28,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /** 공개 진입점과 Access JWT 보호 API의 보안 정책을 정의한다. */
 @Configuration
+@Import(CorsConfig.class)
 public class SecurityConfig {
   private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
 
@@ -98,6 +101,7 @@ public class SecurityConfig {
         UsernamePasswordAuthenticationFilter.class);
 
     return http.csrf(AbstractHttpConfigurer::disable)
+        .cors(Customizer.withDefaults())
         .formLogin(AbstractHttpConfigurer::disable)
         .httpBasic(AbstractHttpConfigurer::disable)
         .sessionManagement(

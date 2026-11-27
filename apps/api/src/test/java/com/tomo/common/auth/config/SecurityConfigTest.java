@@ -5,8 +5,10 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,12 +52,15 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 
-@WebMvcTest(SecurityConfigTest.TestController.class)
+@WebMvcTest(
+    controllers = SecurityConfigTest.TestController.class,
+    properties = "tomo.cors.allowed-origins=http://localhost:3000,https://frontend.example.com")
 @Import({SecurityConfig.class, SecurityConfigTest.TestController.class, RequestLoggingConfig.class})
 @ActiveProfiles("test")
 class SecurityConfigTest {
@@ -68,6 +73,64 @@ class SecurityConfigTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockitoBean private LoginSessionService loginSessionService;
+
+  @ParameterizedTest
+  @ValueSource(strings = {"http://localhost:3000", "https://frontend.example.com"})
+  @DisplayName("여러 허용 출처의 preflight 요청은 JWT 없이 처리한다")
+  void allowsPreflightFromConfiguredOrigins(String origin) throws Exception {
+    // when
+    ResultActions result =
+        mockMvc.perform(
+            options("/api/private")
+                .header(HttpHeaders.ORIGIN, origin)
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type"));
+
+    // then
+    result
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin))
+        .andExpect(
+            response ->
+                assertThat(
+                        StringUtils.tokenizeToStringArray(
+                            response
+                                .getResponse()
+                                .getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS),
+                            ","))
+                    .containsExactlyInAnyOrder("authorization", "content-type"))
+        .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+  }
+
+  @Test
+  @DisplayName("미등록 출처의 preflight 요청은 거부한다")
+  void rejectsPreflightFromUnknownOrigin() throws Exception {
+    // when
+    ResultActions result =
+        mockMvc.perform(
+            options("/api/private")
+                .header(HttpHeaders.ORIGIN, "https://unknown.example.com")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"));
+
+    // then
+    result
+        .andExpect(status().isForbidden())
+        .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+  }
+
+  @Test
+  @DisplayName("허용된 출처의 실제 요청도 JWT 인증을 요구하며 오류 응답에 CORS 헤더를 유지한다")
+  void keepsCorsHeadersOnAuthenticationFailure() throws Exception {
+    // when
+    ResultActions result =
+        mockMvc.perform(get("/api/private").header(HttpHeaders.ORIGIN, "http://localhost:3000"));
+
+    // then
+    result
+        .andExpect(status().isUnauthorized())
+        .andExpect(
+            header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000"));
+  }
 
   @ParameterizedTest
   @ValueSource(ints = {200, 401, 403})
