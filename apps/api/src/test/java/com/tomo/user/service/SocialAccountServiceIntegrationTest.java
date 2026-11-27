@@ -146,6 +146,64 @@ class SocialAccountServiceIntegrationTest {
         .contains(recreated.userId());
   }
 
+  @Test
+  @DisplayName("DELETE 계정의 동시 재가입은 새 소셜 연결 하나만 생성한다")
+  void competingDeletedLoginsCreateOnlyOneNewAccount() throws Exception {
+    // given
+    String subject = "google-" + UUID.randomUUID();
+    createdSubjects.add(subject);
+
+    Account previous = service.findOrCreate(SocialProvider.GOOGLE, subject);
+    deletedUserIds.add(previous.userId());
+
+    jdbcTemplate.update(
+        "update users set account_status = 'DELETE' where users_id = ?", previous.userId());
+
+    long usersBefore = users.count();
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    try {
+      Future<Object> first = executor.submit(() -> executeLogin(start, subject));
+      Future<Object> second = executor.submit(() -> executeLogin(start, subject));
+
+      // when
+      start.countDown();
+
+      Object firstResult = first.get(20, TimeUnit.SECONDS);
+      Object secondResult = second.get(20, TimeUnit.SECONDS);
+
+      // then
+      String newUserId =
+          identities
+              .findByProviderAndProviderSubject(SocialProvider.GOOGLE, subject)
+              .orElseThrow()
+              .getUserId();
+
+      assertThat(newUserId).isNotEqualTo(previous.userId());
+
+      assertThat(List.of(firstResult, secondResult))
+          .filteredOn(result -> result instanceof Account)
+          .isNotEmpty();
+
+      assertThat(List.of(firstResult, secondResult))
+          .allSatisfy(
+              result -> {
+                if (result instanceof Account account) {
+                  assertThat(account.userId()).isEqualTo(newUserId);
+                  assertThat(account.status()).isEqualTo(AccountStatus.PENDING);
+                } else {
+                  assertThat(result).isEqualTo(CommonErrorCode.CONCURRENT_REQUEST_CONFLICT);
+                }
+              });
+
+      assertThat(users.count()).isEqualTo(usersBefore + 1);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
   private Object executeLogin(CountDownLatch start, String subject) throws Exception {
     start.await();
     try {

@@ -2,6 +2,7 @@ package com.tomo.user.service;
 
 import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.nio.charset.StandardCharsets;
@@ -77,24 +78,28 @@ public class RefreshTokenService {
    *
    * <p>동일 세션에 토큰이 있거나 폐기 표시가 남아 있으면 덮어쓰지 않는다.
    *
-   * @param sessionId 세션 ID
+   * @param sessionId 새 로그인 세션 ID
    * @param expiresAt DB 세션 만료 시각(UTC)
    * @return 신규 Refresh Token 원문
-   * @throws BusinessException 세션이 만료되었거나 기존 토큰 키가 존재하는 경우
+   * @throws BusinessException 세션 정보가 유효하지 않거나 중복 발급이 감지된 경우
    */
   public String issue(long sessionId, LocalDateTime expiresAt) {
     if (sessionId <= 0 || expiresAt == null) {
-      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
+
     Duration ttl = Duration.between(clock.instant(), expiresAt.toInstant(ZoneOffset.UTC));
+
     if (ttl.toMillis() < 1) {
-      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
 
     String token = newToken(sessionId);
+
     if (!redisStringClient.setIfAbsent(key(sessionId), hash(token), ttl)) {
-      throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+      throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
     }
+
     LOG.info("Refresh Token 최초 발급. sessionId={}", sessionId);
     return token;
   }

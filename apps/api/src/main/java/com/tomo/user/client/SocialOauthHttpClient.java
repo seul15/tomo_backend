@@ -107,22 +107,23 @@ public class SocialOauthHttpClient {
   }
 
   private BusinessException translateFailure(RestClientException exception, boolean tokenRequest) {
+
     if (exception instanceof RestClientResponseException response) {
       int status = response.getStatusCode().value();
+
       if (tokenRequest
           && (status == 400 || status == 401)
           && "invalid_grant".equals(readOAuthError(response))) {
         LOG.debug("소셜 인증 거부. status={}", status);
         return new BusinessException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
       }
+
       if (!tokenRequest && (status == 401 || status == 403)) {
         LOG.debug("소셜 인증 거부. status={}", status);
         return new BusinessException(AuthErrorCode.OAUTH_AUTHENTICATION_FAILED);
       }
-      LOG.warn("소셜 제공자 응답 오류. tokenRequest={} status={}", tokenRequest, status);
-    } else {
-      LOG.warn("소셜 제공자 통신 오류. causeType={}", exception.getClass().getSimpleName());
     }
+
     return new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
   }
 

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.tomo.common.auth.exception.AuthErrorCode;
 import com.tomo.common.exception.BusinessException;
+import com.tomo.common.exception.CommonErrorCode;
 import com.tomo.integration.redis.RedisStringClient;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -233,7 +234,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(CommonErrorCode.INTERNAL_SERVER_ERROR));
 
     verifyNoInteractions(redisStringClient);
   }
@@ -254,7 +255,7 @@ class RefreshTokenServiceTest {
             BusinessException.class,
             exception ->
                 assertThat(exception.getErrorCode())
-                    .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+                    .isEqualTo(CommonErrorCode.INTERNAL_SERVER_ERROR));
   }
 
   @Test

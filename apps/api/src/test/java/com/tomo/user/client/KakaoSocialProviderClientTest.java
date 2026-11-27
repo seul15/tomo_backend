@@ -23,7 +23,7 @@ class KakaoSocialProviderClientTest {
   private final ObjectMapper mapper = new ObjectMapper();
 
   @Test
-  @DisplayName("Kakao의 숫자형 고유 ID를 문자열로 변환하고 이메일은 선택적으로 수신한다")
+  @DisplayName("Kakao의 숫자형 고유 ID를 문자열로 변환한다")
   void readsKakaoUserId() throws Exception {
     // given
     when(http.postForm(eq("https://kauth.kakao.com/oauth/token"), any(MultiValueMap.class)))
