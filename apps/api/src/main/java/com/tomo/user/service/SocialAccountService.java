@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** 소셜 고유 ID 기준으로 기존 계정을 찾거나 신규 가입 대기 계정을 생성한다. */
 @Service
 public class SocialAccountService {
+  private static final int MYSQL_DUPLICATE_KEY_ERROR_CODE = 1062;
+
   private final UserRepository userRepository;
   private final SocialIdentityRepository socialIdentityRepository;
 
@@ -99,10 +101,19 @@ public class SocialAccountService {
     return new Account(pending.getId(), AccountStatus.PENDING, null, null);
   }
 
+  /**
+   * 데이터베이스 예외의 원인 체인에서 MySQL 중복 키 오류를 확인한다.
+   *
+   * <p>MySQL 오류 번호 1062를 검사해 중복 연결 시도를 동시 요청 충돌로 변환하기 위해 사용한다.
+   *
+   * @param exception 데이터 무결성 예외
+   * @return 중복 키 오류가 확인되면 true
+   */
   private static boolean isDuplicateKey(Throwable exception) {
     Throwable cause = exception;
     while (cause != null) {
-      if (cause instanceof SQLException sql && sql.getErrorCode() == 1062) {
+      if (cause instanceof SQLException sql
+          && sql.getErrorCode() == MYSQL_DUPLICATE_KEY_ERROR_CODE) {
         return true;
       }
       cause = cause.getCause();

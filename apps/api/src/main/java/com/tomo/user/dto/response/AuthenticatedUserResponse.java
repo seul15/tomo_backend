@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * @param refreshTokenExpiresIn Refresh Token 만료기간(초)
  * @param user 가입 완료 사용자 정보
  */
+@Schema(description = "가입 완료 회원의 소셜 로그인 성공 응답 데이터")
 public record AuthenticatedUserResponse(
     @Schema(description = "TOMO Access JWT", requiredMode = Schema.RequiredMode.REQUIRED)
         String accessToken,
@@ -54,6 +55,7 @@ public record AuthenticatedUserResponse(
    * @param nickname 가입 완료 닉네임
    * @param profileImageUrl 기본 이미지 또는 등록 이미지 URL
    */
+  @Schema(description = "소셜 로그인에 성공한 회원의 기본 프로필 정보")
   public record UserInfo(
       @Schema(
               description = "TOMO 사용자 역할",

@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -59,7 +60,7 @@ public interface AuthApiDocs {
                                               "success": true,
                                               "data": {
                                                 "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
-                                                "refreshToken": "123.NEW_REFRESH_TOKEN",
+                                                "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                                                 "accessTokenExpiresIn": 3600,
                                                 "refreshTokenExpiresIn": 604800,
                                                 "user": {
@@ -285,119 +286,412 @@ public interface AuthApiDocs {
       @Parameter(hidden = true) HttpServletRequest request);
 
   /**
-   * Google 소셜 로그인 API.
+   * Google에서 검증한 사용자 고유 ID를 기준으로 소셜 로그인을 처리한다.
    *
-   * @param body 인가 코드 및 PKCE 검증값
-   * @param request 요청 ID용 HTTP 요청
-   * @return PENDING 가입 전용 토큰 또는 ACTIVE 로그인 토큰
+   * <p>가입 대기 회원에게는 Signup Token만, 가입 완료 회원에게는 Access Token과 Refresh Token을 반환한다.
+   *
+   * @param body Google 인가 코드와 PKCE 검증값
+   * @param request 요청 ID 확인용 HTTP 요청
+   * @return 회원 가입 상태에 따른 소셜 로그인 결과
    */
   @Operation(
       summary = "Google 소셜 로그인",
       description =
-          "프론트에서 state와 PKCE(S256)를 검증합니다. "
-              + "백엔드는 인가 코드를 Google과 교환하고, PENDING은 Signup Token만, "
-              + "ACTIVE는 Access/Refresh Token을 반환합니다.")
+          "Google Authorization Code와 PKCE codeVerifier로 사용자를 인증합니다. "
+              + "프론트엔드에서 OAuth state를 검증한 후 인가 코드와 codeVerifier를 전달합니다. "
+              + "백엔드는 Google 토큰 API를 통해 PKCE를 검증받고 사용자 고유 ID(sub)를 조회합니다. "
+              + "이메일은 계정 식별이나 저장에 사용하지 않습니다. "
+              + "신규 회원 또는 PENDING 회원에게는 회원가입용 Signup Token을 반환하며, "
+              + "ACTIVE 회원에게는 새 로그인 세션을 생성하고 Access Token과 Refresh Token을 반환합니다. "
+              + "BAN 회원은 로그인을 거부하고, DELETE 회원은 기존 계정을 복구하지 않고 신규 가입으로 처리합니다. "
+              + "Access Token 인증은 필요하지 않습니다.",
+      requestBody =
+          @RequestBody(
+              description = "Google 인가 코드와 PKCE 검증값",
+              required = true,
+              content =
+                  @Content(
+                      mediaType = MediaType.APPLICATION_JSON_VALUE,
+                      schema = @Schema(implementation = GoogleLoginRequest.class),
+                      examples =
+                          @ExampleObject(
+                              name = "Google 로그인 요청",
+                              value =
+                                  """
+                                            {
+                                              "authorizationCode": "google-authorization-code",
+                                              "codeVerifier": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                                            }
+                                            """))))
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",
-        description = "로그인 완료 또는 가입 대기",
+        description = "가입 대기 또는 로그인 완료",
         useReturnTypeSchema = true,
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 examples = {
                   @ExampleObject(
-                      name = "가입 대기",
+                      name = "가입 대기 - PENDING",
                       value =
                           """
-                          {"success":true,"data":{"signupToken":"JWT","signupTokenExpiresIn":600},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
-                          """),
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "signupToken": "eyJhbGciOiJIUzI1NiJ9.example",
+                                                        "signupTokenExpiresIn": 600
+                                                      },
+                                                      "meta": {
+                                                        "requestId": "example-request-id",
+                                                        "timestamp": "2026-11-27T00:00:00Z"
+                                                      }
+                                                    }
+                                                    """),
                   @ExampleObject(
-                      name = "로그인 완료",
+                      name = "로그인 완료 - ACTIVE",
                       value =
                           """
-                          {"success":true,"data":{"accessToken":"ACCESS_JWT","refreshToken":"123.OPAQUE_REFRESH_TOKEN","accessTokenExpiresIn":3600,"refreshTokenExpiresIn":604800,"user":{"role":"USER","nickname":"집중토모","profileImageUrl":"https://res.cloudinary.com/example/default.png"}},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
-                          """)
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
+                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                                        "accessTokenExpiresIn": 3600,
+                                                        "refreshTokenExpiresIn": 604800,
+                                                        "user": {
+                                                          "role": "USER",
+                                                          "nickname": "집중토모",
+                                                          "profileImageUrl": "https://res.cloudinary.com/example/default.png"
+                                                        }
+                                                      },
+                                                      "meta": {
+                                                        "requestId": "example-request-id",
+                                                        "timestamp": "2026-11-27T00:00:00Z"
+                                                      }
+                                                    }
+                                                    """)
                 })),
     @ApiResponse(
         responseCode = "400",
-        description = "INVALID_REQUEST",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "인가 코드 누락 또는 PKCE 검증값 형식 오류",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "INVALID_REQUEST",
+                                                "message": "요청 필드 또는 도메인 검증 조건이 올바르지 않습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "401",
-        description = "OAUTH_AUTHENTICATION_FAILED",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "Google 인증 실패 또는 인가 코드 만료",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "OAUTH_AUTHENTICATION_FAILED",
+                                                "message": "소셜 인증에 실패했거나 인가 코드가 만료되었습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "403",
-        description = "SOCIAL_LOGIN_FORBIDDEN",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "BAN 상태 계정의 로그인 거부",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "SOCIAL_LOGIN_FORBIDDEN",
+                                                "message": "이용이 제한된 계정은 소셜 로그인을 진행할 수 없습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "409",
-        description = "CONCURRENT_REQUEST_CONFLICT",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "동시 로그인으로 소셜 계정 연결 충돌",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "CONCURRENT_REQUEST_CONFLICT",
+                                                "message": "동일한 리소스에 대한 요청이 동시에 처리되어 충돌이 발생했습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "500",
-        description = "INTERNAL_SERVER_ERROR",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+        description = "OAuth 제공자 통신 오류 또는 서버 내부 오류",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "INTERNAL_SERVER_ERROR",
+                                                "message": "서버 처리 중 오류가 발생했습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """)))
   })
   CommonResponse<SocialLoginResponse> google(
       GoogleLoginRequest body, @Parameter(hidden = true) HttpServletRequest request);
 
   /**
-   * Kakao 소셜 로그인 API.
+   * Kakao에서 검증한 사용자 고유 ID를 기준으로 소셜 로그인을 처리한다.
+   *
+   * <p>인가 코드로 사용자를 인증한 뒤 가입 상태에 따라 Signup Token 또는 로그인 토큰 쌍을 반환한다.
    *
    * @param body Kakao 인가 코드
-   * @param request 요청 ID용 HTTP 요청
-   * @return PENDING 가입 전용 토큰 또는 ACTIVE 로그인 토큰
+   * @param request 요청 ID 확인용 HTTP 요청
+   * @return 회원 가입 상태에 따른 소셜 로그인 결과
    */
   @Operation(
       summary = "Kakao 소셜 로그인",
       description =
-          "프론트에서 state 검증에 성공한 인가 코드를 전달합니다. "
-              + "백엔드는 Kakao와 코드를 교환하고, PENDING은 Signup Token만, "
-              + "ACTIVE는 Access/Refresh Token을 반환합니다.")
+          "Kakao Authorization Code로 사용자를 인증합니다. "
+              + "프론트엔드에서 OAuth state를 검증한 후 인가 코드를 전달합니다. "
+              + "백엔드는 Kakao 토큰 API에서 Access Token을 발급받고 사용자 고유 ID를 조회합니다. "
+              + "이메일은 계정 식별이나 저장에 사용하지 않습니다. "
+              + "신규 회원 또는 PENDING 회원은 Signup Token을 발급받아 회원가입을 진행합니다. "
+              + "ACTIVE 회원은 새 로그인 세션과 Access Token, Refresh Token을 발급받습니다. "
+              + "BAN 회원은 로그인이 거부되며, DELETE 회원은 신규 계정으로 다시 가입합니다. "
+              + "Access Token 인증은 필요하지 않습니다.",
+      requestBody =
+          @RequestBody(
+              description = "Kakao 인가 코드",
+              required = true,
+              content =
+                  @Content(
+                      mediaType = MediaType.APPLICATION_JSON_VALUE,
+                      schema = @Schema(implementation = KakaoLoginRequest.class),
+                      examples =
+                          @ExampleObject(
+                              name = "Kakao 로그인 요청",
+                              value =
+                                  """
+                                            {
+                                              "authorizationCode": "kakao-authorization-code"
+                                            }
+                                            """))))
   @ApiResponses({
     @ApiResponse(
         responseCode = "200",
-        description = "로그인 완료 또는 가입 대기",
+        description = "가입 대기 또는 로그인 완료",
         useReturnTypeSchema = true,
         content =
             @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 examples = {
                   @ExampleObject(
-                      name = "가입 대기",
+                      name = "가입 대기 - PENDING",
                       value =
                           """
-                          {"success":true,"data":{"signupToken":"JWT","signupTokenExpiresIn":600},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
-                          """),
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "signupToken": "eyJhbGciOiJIUzI1NiJ9.example",
+                                                        "signupTokenExpiresIn": 600
+                                                      },
+                                                      "meta": {
+                                                        "requestId": "example-request-id",
+                                                        "timestamp": "2026-11-27T00:00:00Z"
+                                                      }
+                                                    }
+                                                    """),
                   @ExampleObject(
-                      name = "로그인 완료",
+                      name = "로그인 완료 - ACTIVE",
                       value =
                           """
-                          {"success":true,"data":{"accessToken":"ACCESS_JWT","refreshToken":"123.OPAQUE_REFRESH_TOKEN","accessTokenExpiresIn":3600,"refreshTokenExpiresIn":604800,"user":{"role":"USER","nickname":"집중토모","profileImageUrl":"https://res.cloudinary.com/example/default.png"}},"meta":{"requestId":"req-id","timestamp":"2026-11-27T00:00:00Z"}}
-                          """)
+                                                    {
+                                                      "success": true,
+                                                      "data": {
+                                                        "accessToken": "eyJhbGciOiJIUzI1NiJ9.example",
+                                                        "refreshToken": "123.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                                                        "accessTokenExpiresIn": 3600,
+                                                        "refreshTokenExpiresIn": 604800,
+                                                        "user": {
+                                                          "role": "USER",
+                                                          "nickname": "집중토모",
+                                                          "profileImageUrl": "https://res.cloudinary.com/example/default.png"
+                                                        }
+                                                      },
+                                                      "meta": {
+                                                        "requestId": "example-request-id",
+                                                        "timestamp": "2026-11-27T00:00:00Z"
+                                                      }
+                                                    }
+                                                    """)
                 })),
     @ApiResponse(
         responseCode = "400",
-        description = "INVALID_REQUEST",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "인가 코드 누락 또는 잘못된 요청",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "INVALID_REQUEST",
+                                                "message": "요청 필드 또는 도메인 검증 조건이 올바르지 않습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "401",
-        description = "OAUTH_AUTHENTICATION_FAILED",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "Kakao 인증 실패 또는 인가 코드 만료",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "OAUTH_AUTHENTICATION_FAILED",
+                                                "message": "소셜 인증에 실패했거나 인가 코드가 만료되었습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "403",
-        description = "SOCIAL_LOGIN_FORBIDDEN",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "BAN 상태 계정의 로그인 거부",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "SOCIAL_LOGIN_FORBIDDEN",
+                                                "message": "이용이 제한된 계정은 소셜 로그인을 진행할 수 없습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "409",
-        description = "CONCURRENT_REQUEST_CONFLICT",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+        description = "동시 로그인으로 소셜 계정 연결 충돌",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "CONCURRENT_REQUEST_CONFLICT",
+                                                "message": "동일한 리소스에 대한 요청이 동시에 처리되어 충돌이 발생했습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """))),
     @ApiResponse(
         responseCode = "500",
-        description = "INTERNAL_SERVER_ERROR",
-        content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+        description = "OAuth 제공자 통신 오류 또는 서버 내부 오류",
+        content =
+            @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = @Schema(implementation = ErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        value =
+                            """
+                                            {
+                                              "success": false,
+                                              "error": {
+                                                "code": "INTERNAL_SERVER_ERROR",
+                                                "message": "서버 처리 중 오류가 발생했습니다."
+                                              },
+                                              "meta": {
+                                                "requestId": "example-request-id",
+                                                "timestamp": "2026-11-27T00:00:00Z"
+                                              }
+                                            }
+                                            """)))
   })
   CommonResponse<SocialLoginResponse> kakao(
       KakaoLoginRequest body, @Parameter(hidden = true) HttpServletRequest request);

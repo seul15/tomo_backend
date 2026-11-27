@@ -79,6 +79,19 @@ public final class SocialLoginFacade {
     return login(SocialProvider.KAKAO, authorizationCode, null);
   }
 
+  /**
+   * 소셜 제공자의 인증 결과를 회원 상태에 따라 처리한다.
+   *
+   * <p>PENDING 회원에게는 가입 전용 토큰만 발급하고, ACTIVE 회원에게는 기존 로그인 세션 발급 기능을 사용한다. BAN 회원은 로그인을 거부한다.
+   *
+   * <p>외부 OAuth 인증을 먼저 완료한 뒤 회원 정보를 조회하므로 외부 통신이 회원 DB 트랜잭션에 포함되지 않는다.
+   *
+   * @param provider 인증 제공자
+   * @param authorizationCode 제공자 인가 코드
+   * @param codeVerifier Google PKCE 검증값. Kakao에서는 null
+   * @return 가입 대기 또는 로그인 완료 결과
+   * @throws BusinessException 인증 결과나 계정 상태가 유효하지 않은 경우
+   */
   private SocialLoginResult login(
       SocialProvider provider, String authorizationCode, String codeVerifier) {
     SocialProviderClient client = clients.get(provider);

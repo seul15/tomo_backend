@@ -106,6 +106,16 @@ public class SocialOauthHttpClient {
     return body;
   }
 
+  /**
+   * OAuth 제공자의 HTTP 오류를 기존 인증·공통 오류 코드로 변환한다.
+   *
+   * <p>인가 코드 오류(invalid_grant)와 사용자 정보 조회 인증 거부는 클라이언트 인증 실패로 처리한다. 제공자 설정 오류, 요청 제한 및 통신 장애는 서버 내부
+   * 오류로 처리한다.
+   *
+   * @param exception OAuth HTTP 요청 중 발생한 예외
+   * @param tokenRequest 토큰 교환 요청이면 true, 사용자 정보 조회면 false
+   * @return 공통 예외 처리기에 전달할 업무 예외
+   */
   private BusinessException translateFailure(RestClientException exception, boolean tokenRequest) {
 
     if (exception instanceof RestClientResponseException response) {
