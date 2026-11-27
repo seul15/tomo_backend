@@ -3,7 +3,9 @@ package com.tomo.user.client;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +40,17 @@ class KakaoSocialProviderClientTest {
 
     // then
     assertThat(identity.providerSubject()).isEqualTo("12345");
+
+    verify(http)
+        .postForm(
+            eq("https://kauth.kakao.com/oauth/token"),
+            argThat(
+                form ->
+                    "authorization_code".equals(form.getFirst("grant_type"))
+                        && "rest-api-key".equals(form.getFirst("client_id"))
+                        && "code".equals(form.getFirst("code"))
+                        && "https://example.com/oauth/kakao"
+                            .equals(form.getFirst("redirect_uri"))));
   }
 
   @Test

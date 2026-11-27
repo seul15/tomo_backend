@@ -30,7 +30,7 @@ public interface UserApiDocs {
   @Operation(
       summary = "내 계정·프로필 조회",
       description =
-          """
+"""
                   Access Token으로 인증된 사용자의 계정 및 프로필 정보를 조회합니다.
 
                   ### 요청 방법
@@ -44,7 +44,8 @@ public interface UserApiDocs {
                   - ACTIVE 상태의 회원만 프로필을 조회할 수 있습니다.
                   - 사용자 정보와 연결된 소셜 계정 정보를 함께 조회합니다.
                   - 사용자 또는 소셜 계정 연결 정보가 없으면 `404 RESOURCE_NOT_FOUND`를 반환합니다.
-                  - ACTIVE 상태가 아닌 회원은 `403 PROFILE_VIEW_FORBIDDEN`으로 거부합니다.
+- 인증 단계에서 ACTIVE 계정과 로그인 세션의 유효성을 확인하며, 실패하면 `401 INVALID_ACCESS_TOKEN`을 반환합니다.
+- 인증 이후 프로필 조회 단계에서 ACTIVE 상태가 아닌 것으로 확인되면 `403 PROFILE_VIEW_FORBIDDEN`을 반환합니다.
 
                   ### 성공 응답 필드
                   - `nickname`: 사용자 닉네임입니다.
@@ -62,8 +63,8 @@ public interface UserApiDocs {
                     이 조회 API는 DB에 저장된 이미지 값을 그대로 반환합니다.
 
                   ### 오류 응답
-                  - `401 INVALID_ACCESS_TOKEN`: Access Token 인증 실패
-                  - `403 PROFILE_VIEW_FORBIDDEN`: 활성 상태가 아닌 회원
+- `401 INVALID_ACCESS_TOKEN`: Access Token 인증 실패, 비활성 계정 또는 유효하지 않은 로그인 세션
+- `403 PROFILE_VIEW_FORBIDDEN`: 인증 이후 프로필 조회 단계에서 비활성 계정 확인
                   - `404 RESOURCE_NOT_FOUND`: 사용자 또는 소셜 계정 연결 정보 없음
                   - `500 INTERNAL_SERVER_ERROR`: 서버 내부 오류
                   """,
